@@ -12,17 +12,19 @@ const technicians: Technician[] = [
   { id: 'tech-app', name: 'Application technician', skills: ['Application', 'Software', 'Authentication'], available: true },
   { id: 'tech-infra', name: 'Infrastructure technician', skills: ['Database', 'Network', 'Security'], available: true }
 ];
+let actor = { id: 'employee-demo', name: 'Employee', role: 'Employee' as Role };
+export function setIncidentActor(user: { id: string; name: string; role: Role }) { actor = user; }
 const key = 'oop-irctc.incidents.v1';
 function build(input: IncidentInput, id: string): Incident {
   if (input.title.trim().length < 5 || input.title.length > 120 || input.description.trim().length < 10 || input.description.length > 4000) throw new Error('Use a title of 5–120 characters and description of 10–4000 characters.');
   if (!(services as readonly string[]).includes(input.service) || !(categories as readonly string[]).includes(input.category)) throw new Error('Select a valid service and category.');
   const priority = calculatePriority(input); const now = Date.now();
-  return { ...input, title: input.title.trim(), description: input.description.trim(), id, reporterId: users.Employee.id, priority, status: 'CLASSIFIED', createdAt: new Date(now).toISOString(), responseDueAt: new Date(now + slaMinutes[priority].response * 60000).toISOString(), resolutionDueAt: new Date(now + slaMinutes[priority].resolution * 60000).toISOString(), history: [{ at: new Date(now).toISOString(), actor: users.Employee.name, action: `Reported and classified; calculated priority ${priority}.` }] };
+  return { ...input, title: input.title.trim(), description: input.description.trim(), id, reporterId: actor.id, priority, status: 'CLASSIFIED', createdAt: new Date(now).toISOString(), responseDueAt: new Date(now + slaMinutes[priority].response * 60000).toISOString(), resolutionDueAt: new Date(now + slaMinutes[priority].resolution * 60000).toISOString(), history: [{ at: new Date(now).toISOString(), actor: actor.name, action: `Reported and classified; calculated priority ${priority}.` }] };
 }
 function load(): Incident[] {
   const raw = localStorage.getItem(key);
   if (raw) { try { const data = JSON.parse(raw); if (Array.isArray(data)) return data; } catch { /* Report corruption without silently overwriting stored work. */ } throw new Error('Demo storage is unreadable. Clear this site’s local storage to reset it.'); }
-  return [build({ title: 'Payment transactions failing during Tatkal', description: 'Passengers cannot complete payment during the booking window.', service: 'Payments', category: 'Application', impact: 3, urgency: 3, criticality: 3 }, 'INC-DEMO-001')];
+  return [{ ...build({ title: 'Payment transactions failing during Tatkal', description: 'Passengers cannot complete payment during the booking window.', service: 'Payments', category: 'Application', impact: 3, urgency: 3, criticality: 3 }, 'INC-DEMO-001'), reporterId: 'employee-demo' }];
 }
 // Strategy implementations are interchangeable. Server must implement authoritative versions.
 export interface AssignmentStrategy { select(incident: Incident, pool: Technician[], incidents: Incident[]): Technician | undefined }
@@ -41,16 +43,18 @@ export class MockIncidentApi implements IncidentApi {
   async list() { const items = load(); this.save(items); return items; }
   async technicians() { return technicians; }
   async create(input: IncidentInput) {
+    if (actor.role !== 'Employee') throw new Error('Only employees can report incidents.');
     const items = load(); const incident = build(input, `INC-${crypto.randomUUID()}`);
     this.save([incident, ...items]); return incident;
   }
   async advance(id: string, role: Role, resolution?: string) {
+    if (role !== actor.role) throw new Error('Role does not match the signed-in account.');
     const items = load(); const incident = items.find(i => i.id === id);
     if (!incident) throw new Error('Incident not found.');
     const status = nextStatus(incident, role);
     if (!status) throw new Error('This role cannot perform that transition.');
-    if (role === 'Technician' && incident.assigneeId !== users.Technician.id) throw new Error('This incident is assigned to another technician.');
-    if (role === 'Employee' && incident.reporterId !== users.Employee.id) throw new Error('Only the reporter can verify resolution.');
+    if (role === 'Technician' && incident.assigneeId !== actor.id) throw new Error('This incident is assigned to another technician.');
+    if (role === 'Employee' && incident.reporterId !== actor.id) throw new Error('Only the reporter can verify resolution.');
     if (status === 'ASSIGNED') {
       const technician = this.assignment.select(incident, technicians, items);
       if (!technician) throw new Error('No suitable technician is available.');
@@ -60,8 +64,9 @@ export class MockIncidentApi implements IncidentApi {
     const at = new Date().toISOString();
     if (status === 'ACKNOWLEDGED') incident.acknowledgedAt = at;
     if (status === 'RESOLVED') { incident.resolution = resolution!.trim(); incident.resolvedAt = at; }
-    incident.history.push({ at, actor: users[role].name, action: `${incident.status} → ${status}${status === 'ASSIGNED' ? ` (${incident.assigneeId})` : ''}` });
+    incident.history.push({ at, actor: actor.name, action: `${incident.status} → ${status}${status === 'ASSIGNED' ? ` (${incident.assigneeId})` : ''}` });
     incident.status = status; this.save(items); return incident;
   }
 }
 export const api: IncidentApi = new MockIncidentApi();
+

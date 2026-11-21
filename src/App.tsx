@@ -1,17 +1,20 @@
+import { AuthGate, type AuthUser } from './auth';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { api, users } from './data/api';
+import { api, setIncidentActor } from './data/api';
 import { calculatePriority, categories, nextStatus, services, slaBreached, statuses, type Incident, type IncidentInput, type Role } from '../shared/domain';
 
 const date = (value: string) => new Date(value).toLocaleString();
-export default function App() {
-  const [role, setRole] = useState<Role>('Employee');
+export default function App() { return <AuthGate>{(user, logout) => <Workspace key={user.id} user={user} logout={logout} />}</AuthGate>; }
+function Workspace({ user, logout }: { user: AuthUser; logout: () => Promise<void> }) {
+  setIncidentActor(user);
+  const role = user.role;
   const [items, setItems] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   async function refresh() { setLoading(true); setError(''); try { setItems(await api.list()); } catch (e) { setError((e as Error).message); } finally { setLoading(false); } }
   useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 60000); return () => clearInterval(timer); }, []);
-  const visible = items.filter(i => role === 'Manager' || (role === 'Employee' ? i.reporterId === users.Employee.id : i.assigneeId === users.Technician.id));
-  return <><header><div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div><label>Role <select value={role} onChange={e => setRole(e.target.value as Role)}>{Object.keys(users).map(r => <option key={r}>{r}</option>)}</select></label></header>
+  const visible = items.filter(i => role === 'Manager' || (role === 'Employee' ? i.reporterId === user.id : i.assigneeId === user.id));
+  return <><header><div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div><div className="account-menu"><span>{user.name} · {role === 'Manager' ? 'Administrator / IT Manager' : role}</span><button onClick={() => void logout()}>Sign out</button></div></header>
     <nav aria-label="Main navigation"><div className="nav-label">SERVICE OPERATIONS</div><NavLink to="/" end>Overview</NavLink><NavLink to="/incidents" end>{role === 'Technician' ? 'My assignments' : 'Incidents'}</NavLink>{role === 'Employee' && <NavLink to="/incidents/new">Report incident</NavLink>}{role === 'Manager' && <NavLink to="/management">Management</NavLink>}<div className="nav-bottom">I-ITSM<br/><span>Internal service management</span></div></nav>
     <main>{error && <p role="alert" className="error">{error} <button onClick={() => void refresh()}>Retry</button></p>}{loading && <p role="status">Refreshing incidents…</p>}
       <Routes><Route path="/" element={<Overview items={visible} role={role} />} /><Route path="/incidents" element={<IncidentList items={visible} />} /><Route path="/incidents/new" element={role === 'Employee' ? <Report onSaved={refresh} /> : <p>Switch to Employee to report an incident .</p>} /><Route path="/incidents/:id" element={<Detail items={visible} loading={loading} role={role} refresh={refresh} />} /><Route path="/management" element={role === 'Manager' ? <Management items={items} /> : <p>This screen is available to the Manager role.</p>} /><Route path="*" element={<><h1>Page not found</h1><Link to="/">Return to overview</Link></>} /></Routes>
@@ -49,3 +52,4 @@ function Detail({ items, loading, role, refresh }: { items: Incident[]; loading:
 function Management({ items }: { items: Incident[] }) {
   return <><div className="page-heading"><div><div className="eyebrow">ADMINISTRATION</div><h1>Management</h1></div></div><section><h2>Team workload</h2>{['tech-app', 'tech-infra'].map(id => <p key={id}>{id}: {items.filter(i => i.assigneeId === id && !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(i.status)).length} active incidents</p>)}</section></>;
 }
+
