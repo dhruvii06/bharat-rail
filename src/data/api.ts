@@ -7,9 +7,9 @@ export interface IncidentApi {
   advance(id: string, role: Role, resolution?: string): Promise<Incident>;
   technicians(): Promise<Technician[]>;
 }
-export const users = { Employee: { id: 'employee-demo', name: 'Demo employee' }, Technician: { id: 'tech-app', name: 'Demo technician' }, Manager: { id: 'manager-demo', name: 'Demo manager' } };
+export const users = { Employee: { id: 'employee-demo', name: 'Employee' }, Technician: { id: 'tech-app', name: 'Application technician' }, Manager: { id: 'manager-demo', name: 'IT manager' } };
 const technicians: Technician[] = [
-  { id: 'tech-app', name: 'Demo technician', skills: ['Application', 'Software', 'Authentication'], available: true },
+  { id: 'tech-app', name: 'Application technician', skills: ['Application', 'Software', 'Authentication'], available: true },
   { id: 'tech-infra', name: 'Infrastructure technician', skills: ['Database', 'Network', 'Security'], available: true }
 ];
 const key = 'oop-irctc.incidents.v1';
