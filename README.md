@@ -63,3 +63,7 @@ git push -u origin main
 ```
 
 Only do this after making the initial commit if using an uncommitted copy. The supplied local repository already has an initial commit when setup succeeds. Do not upload node_modules, .env or dist.
+
+## Java team contributions
+
+The two ZIP submissions are now source modules under [java/](java/README.md): domain OOP and PostgreSQL persistence. See that guide for Java 21 build, database setup, validation and the remaining API/model adapter boundary. These modules are not yet connected to the Express web API.

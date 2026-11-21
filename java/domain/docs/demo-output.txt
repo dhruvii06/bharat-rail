@@ -1,0 +1,10 @@
+[SIMULATED EMAIL] CREATED: Incident reported
+[IN-APP] CREATED: Incident reported
+[SIMULATED EMAIL] PRIORITIZED: Priority P1_CRITICAL
+[IN-APP] PRIORITIZED: Priority P1_CRITICAL
+[SIMULATED EMAIL] ASSIGNED: Assigned to Asha
+[IN-APP] ASSIGNED: Assigned to Asha
+ID=5450341e-9ea3-494e-8d1b-f3f381925794
+Priority=P1_CRITICAL, finalStatus=CLOSED
+SLA=SLAResult[responseDeadline=2026-11-12T04:05:00Z, resolutionDeadline=2026-11-12T04:30:00Z, responseViolated=false, resolutionViolated=false, resolutionAtRisk=false]
+Audit entries=8

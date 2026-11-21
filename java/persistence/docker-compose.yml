@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: irctc_itsm
+      POSTGRES_USER: itsm_user
+      POSTGRES_PASSWORD: ${ITSM_DB_PASSWORD:?Set ITSM_DB_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - itsm-data:/var/lib/postgresql/data
+      - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/main/resources/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+volumes:
+  itsm-data:

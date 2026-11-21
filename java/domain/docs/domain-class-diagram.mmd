@@ -1,0 +1,100 @@
+classDiagram
+ direction LR
+ class User {
+   <<abstract>>
+   -UUID id
+   -String name
+   -String email
+   +getRole() String
+ }
+ class Employee
+ class Technician {
+   -Set~Skill~ skills
+   -int activeIncidents
+   -boolean available
+   +takeIncident()
+   +finishIncident()
+ }
+ class Administrator
+ User <|-- Employee
+ User <|-- Technician
+ User <|-- Administrator
+ class Incident {
+   -UUID id
+   -String title
+   -String description
+   -Priority priority
+   -IncidentStatus status
+   -Instant createdAt
+   +classify()
+   +assign()
+   +acknowledge()
+   +startInvestigation()
+   +resolve()
+   +verify()
+   +close()
+ }
+ class RailwayService {
+   -String name
+   -int businessCriticality
+ }
+ class SLAPolicy {
+   +Duration responseTarget
+   +Duration resolutionTarget
+ }
+ class Resolution {
+   +String summary
+   +String rootCause
+ }
+ class AuditEntry {
+   +Instant timestamp
+   +String action
+   +IncidentStatus previousStatus
+   +IncidentStatus newStatus
+ }
+ Incident --> Employee : reporter
+ Incident --> Technician : assigned to
+ Incident --> RailwayService : affects
+ Incident *-- SLAPolicy : SLA
+ Incident *-- Resolution : resolution
+ Incident *-- "1..*" AuditEntry : history
+ class PriorityStrategy {
+   <<interface>>
+   +calculate(Incident) Priority
+ }
+ class RailwayPriorityStrategy
+ PriorityStrategy <|.. RailwayPriorityStrategy
+ class AssignmentStrategy {
+   <<interface>>
+   +select(Incident, List) Technician
+ }
+ class SkillBasedAssignmentStrategy
+ class LoadBasedAssignmentStrategy
+ AssignmentStrategy <|.. SkillBasedAssignmentStrategy
+ AssignmentStrategy <|.. LoadBasedAssignmentStrategy
+ class IncidentRepository {
+   <<interface>>
+   +save(Incident)
+   +findById(UUID)
+   +findAll()
+ }
+ class InMemoryIncidentRepository
+ IncidentRepository <|.. InMemoryIncidentRepository
+ class IncidentListener {
+   <<interface>>
+   +onEvent(IncidentEvent)
+ }
+ class NotificationSender {
+   <<interface>>
+ }
+ IncidentListener <|-- NotificationSender
+ class EmailNotification
+ class InAppNotification
+ NotificationSender <|.. EmailNotification
+ NotificationSender <|.. InAppNotification
+ class IncidentManagementService
+ IncidentManagementService --> PriorityStrategy
+ IncidentManagementService --> AssignmentStrategy
+ IncidentManagementService --> IncidentRepository
+ IncidentManagementService --> EventPublisher
+ EventPublisher --> IncidentListener : notifies
