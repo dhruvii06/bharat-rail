@@ -1,0 +1,14 @@
+digraph System {
+  graph [rankdir=TB, bgcolor="white", pad=0.3, nodesep=0.6];
+  node [shape=box, style="rounded,filled", fillcolor="#eef4fa", color="#4177a4", fontname="DejaVu Sans", fontsize=11];
+  frontend [label="Frontend / Dashboard\n(teammate)"];
+  api [label="Spring Boot REST API\n(teammate)"];
+  app [label="IncidentManagementService\n(your OOP coordination layer)", fillcolor="#d3e7ff"];
+  model [label="Domain Entities\nUser • Incident • RailwayService\nTechnician • SLAPolicy • AuditEntry",fillcolor="#d3e7ff"];
+  strategies [label="Strategies\nPriority • Skill-Based Assignment\nLoad-Based Assignment",fillcolor="#d3e7ff"];
+  events [label="Observer / Notifications\nEmail • In-App",fillcolor="#d3e7ff"];
+  repo [label="IncidentRepository Interface",fillcolor="#d3e7ff"];
+  db [label="PostgreSQL / MySQL Adapter\n(teammate: not included)"];
+  frontend -> api -> app;
+  app -> model; app -> strategies; app -> events; app -> repo -> db;
+}

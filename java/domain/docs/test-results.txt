@@ -1,0 +1,31 @@
+PASS 1: peak Tatkal P1
+PASS 2: critical security override
+PASS 3: score 18 P2
+PASS 4: score 6 P3
+PASS 5: score 3 P4
+PASS 6: cannot close NEW
+PASS 7: initial state
+PASS 8: created audit entry
+PASS 9: P1 response deadline target
+PASS 10: P1 resolution deadline target
+PASS 11: reject wrong skill
+PASS 12: skill-based chooses eligible
+PASS 13: assignment increases workload
+PASS 14: capacity enforcement
+PASS 15: least loaded technician
+PASS 16: unacknowledged past SLA
+PASS 17: only assigned tech can acknowledge
+PASS 18: acknowledged on time remains compliant
+PASS 19: resolution risk warning
+PASS 20: resolution deadline breached
+PASS 21: resolution frees workload
+PASS 22: resolution stored
+PASS 23: only reporter can verify
+PASS 24: full lifecycle closes
+PASS 25: audit records all eight transitions/events
+PASS 26: repository readback
+PASS 27: observer notification
+PASS 28: duplicate candidate detection
+PASS 29: audit attributes actor
+PASS 30: invalid criticality rejected
+TOTAL: 30 checks passed
