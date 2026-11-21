@@ -1,5 +1,6 @@
 package com.railway.itsm.domain.model;
 import com.railway.itsm.domain.enums.Priority;
+import com.railway.itsm.domain.exceptions.SLAPolicyNotFoundException;
 import java.time.Duration;
 public record SLAPolicy(Priority priority, Duration responseTarget, Duration resolutionTarget) {
     public SLAPolicy {
@@ -8,6 +9,7 @@ public record SLAPolicy(Priority priority, Duration responseTarget, Duration res
             throw new IllegalArgumentException("Invalid SLA configuration");
     }
     public static SLAPolicy forPriority(Priority priority){
+        if(priority==null) throw new SLAPolicyNotFoundException("No SLA policy for null priority");
         return switch(priority){
             case P1_CRITICAL -> new SLAPolicy(priority,Duration.ofMinutes(5),Duration.ofMinutes(30));
             case P2_HIGH -> new SLAPolicy(priority,Duration.ofMinutes(15),Duration.ofHours(2));

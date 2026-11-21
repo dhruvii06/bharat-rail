@@ -1,5 +1,7 @@
 package com.railway.itsm.domain.model;
 import com.railway.itsm.domain.enums.Skill;
+import com.railway.itsm.domain.exceptions.TechnicianUnavailableException;
+import com.railway.itsm.domain.exceptions.TechnicianWorkloadExceededException;
 import java.util.Set;
 public final class Technician extends User {
     private final Set<Skill> skills;
@@ -24,7 +26,8 @@ public final class Technician extends User {
     public void setAvailable(boolean available){this.available=available;}
     public int getActiveIncidents(){return activeIncidents;}
     public void takeIncident(){
-        if(!isAvailable()) throw new IllegalStateException("Technician unavailable or at capacity");
+        if(!available) throw new TechnicianUnavailableException("Technician "+getId()+" is unavailable");
+        if(activeIncidents>=maxConcurrentIncidents) throw new TechnicianWorkloadExceededException("Technician "+getId()+" has reached capacity");
         activeIncidents++;
     }
     public void finishIncident(){if(activeIncidents<=0) throw new IllegalStateException("No active incidents"); activeIncidents--;}

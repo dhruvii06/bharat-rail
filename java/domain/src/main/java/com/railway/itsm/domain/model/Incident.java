@@ -1,6 +1,7 @@
 package com.railway.itsm.domain.model;
 import com.railway.itsm.domain.enums.*;
 import com.railway.itsm.domain.exceptions.InvalidTransitionException;
+import com.railway.itsm.domain.exceptions.UnauthorizedIncidentOperationException;
 import java.time.Instant;
 import java.util.*;
 public final class Incident {
@@ -92,7 +93,7 @@ public final class Incident {
         assignedTechnician.finishIncident();
     }
     public void verify(Employee actor,Instant now){
-        if(!reporter.getId().equals(actor.getId())) throw new SecurityException("Only reporter may verify");
+        if(!reporter.getId().equals(actor.getId())) throw new UnauthorizedIncidentOperationException("Only reporter may verify");
         require(IncidentStatus.RESOLVED);
         move(IncidentStatus.VERIFIED,actor,"VERIFIED","Reporter accepted fix",now);
     }
@@ -102,7 +103,7 @@ public final class Incident {
     }
     private void requireAssignedActor(Technician actor){
         if(actor==null||assignedTechnician==null||!assignedTechnician.getId().equals(actor.getId()))
-            throw new SecurityException("Only assigned technician can work on incident");
+            throw new UnauthorizedIncidentOperationException("Only assigned technician can work on incident");
     }
     private void require(IncidentStatus expected){
         if(status!=expected) throw new InvalidTransitionException("Expected "+expected+"; actual "+status);

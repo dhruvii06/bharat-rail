@@ -11,6 +11,10 @@ import com.irctc.itsm.repository.impl.DatabaseException;
 import com.railway.itsm.domain.exceptions.DomainException;
 import com.railway.itsm.domain.exceptions.InvalidTransitionException;
 import com.railway.itsm.domain.exceptions.NoTechnicianAvailableException;
+import com.railway.itsm.domain.exceptions.SLAPolicyNotFoundException;
+import com.railway.itsm.domain.exceptions.TechnicianUnavailableException;
+import com.railway.itsm.domain.exceptions.TechnicianWorkloadExceededException;
+import com.railway.itsm.domain.exceptions.UnauthorizedIncidentOperationException;
 import com.railway.itsm.service.app.Actor;
 import com.railway.itsm.service.app.IncidentWorkflowService;
 import com.railway.itsm.service.app.IncidentWorkflowService.NewIncident;
@@ -124,9 +128,12 @@ public final class ApiServer {
     private static ApiError toError(Exception e) {
         if (e instanceof ApiError a) return a;
         if (e instanceof NotFoundException) return new ApiError(404, "NOT_FOUND", e.getMessage());
-        if (e instanceof SecurityException) return new ApiError(403, "FORBIDDEN", e.getMessage());
+        if (e instanceof SecurityException || e instanceof UnauthorizedIncidentOperationException) return new ApiError(403, "FORBIDDEN", e.getMessage() + ".");
         if (e instanceof InvalidTransitionException) return new ApiError(409, "INVALID_TRANSITION", "That step is not allowed now: " + e.getMessage() + ".");
         if (e instanceof NoTechnicianAvailableException) return new ApiError(409, "NO_TECHNICIAN_AVAILABLE", e.getMessage() + ".");
+        if (e instanceof TechnicianUnavailableException) return new ApiError(409, "TECHNICIAN_UNAVAILABLE", e.getMessage() + ".");
+        if (e instanceof TechnicianWorkloadExceededException) return new ApiError(409, "TECHNICIAN_WORKLOAD_EXCEEDED", e.getMessage() + ".");
+        if (e instanceof SLAPolicyNotFoundException) return new ApiError(409, "SLA_POLICY_MISSING", e.getMessage() + ".");
         if (e instanceof DomainException) return new ApiError(409, "DOMAIN_RULE", e.getMessage());
         if (e instanceof JsonProcessingException) return new ApiError(400, "BAD_REQUEST", "Request body is not valid JSON for this endpoint.");
         if (e instanceof IllegalArgumentException) return new ApiError(422, "VALIDATION_FAILED", e.getMessage());

@@ -56,7 +56,7 @@ On first start in development the API gives every seeded account the demo passwo
 npm test                        # Node tests: priority preview, auth, role checks, forwarding
 npm run build                   # TypeScript check + production build
 mvn -B -f java/pom.xml verify   # builds domain, persistence and service
-mvn -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.itsm.DomainModelChecks -Dexec.classpathScope=test   # 32 domain checks
+mvn -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.itsm.DomainModelChecks -Dexec.classpathScope=test   # 38 domain checks
 ```
 
 ## Project layout
