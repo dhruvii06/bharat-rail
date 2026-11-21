@@ -13,13 +13,6 @@ export function plannedRoutes(): Router {
   const stub = (method: 'get' | 'post' | 'patch' | 'put', path: string, roles: Role[]) => r[method](path, requireRole(...roles), todo);
 
   stub('patch', '/incidents/:id', ['Employee', 'Manager']);   // edit title/description
-
-  // Administration (Manager only): catalogue and policy editing
-  for (const resource of ['users', 'services', 'categories', 'sla-policies']) {
-    stub('get', `/admin/${resource}`, ['Manager']);
-    stub('post', `/admin/${resource}`, ['Manager']);
-    stub('patch', `/admin/${resource}/:id`, ['Manager']);
-  }
-  stub('get', '/audit', ['Manager']);
+  stub('get', '/audit', ['Manager']);                          // cross-incident audit search
   return r;
 }

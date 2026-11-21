@@ -43,3 +43,33 @@ UPDATE technician_details td SET current_workload = (
     SELECT count(*) FROM incidents i
     WHERE i.assigned_technician_id = td.technician_id AND i.status IN ('ASSIGNED', 'ACKNOWLEDGED', 'IN_PROGRESS')
 );
+
+-- ---- Admin settings and the technician "request information" step ----
+
+-- Accounts can be deactivated by the IT manager instead of deleted (history keeps its references).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- An open question from the technician to the reporter, cleared when the reporter answers.
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS info_request TEXT;
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS info_requested_at TIMESTAMP;
+
+-- Categories the IT manager can rename or switch off. Codes match the domain's IncidentCategory
+-- (which maps each category to the technician skill that handles it).
+CREATE TABLE IF NOT EXISTS categories (
+    code VARCHAR(30) PRIMARY KEY,
+    label VARCHAR(60) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);
+INSERT INTO categories (code, label) VALUES
+('APPLICATION', 'Application'), ('PAYMENT', 'Payment'), ('DATABASE', 'Database'), ('NETWORK', 'Network'),
+('SECURITY', 'Security'), ('AUTHENTICATION', 'Authentication'), ('API_INTEGRATION', 'API integration'),
+('INFRASTRUCTURE', 'Infrastructure')
+ON CONFLICT (code) DO NOTHING;
+
+-- System settings, such as the default assignment strategy.
+CREATE TABLE IF NOT EXISTS settings (
+    setting_key VARCHAR(50) PRIMARY KEY,
+    setting_value VARCHAR(200) NOT NULL
+);
+INSERT INTO settings (setting_key, setting_value) VALUES ('default_assignment_strategy', 'skill')
+ON CONFLICT (setting_key) DO NOTHING;

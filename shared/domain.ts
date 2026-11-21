@@ -5,7 +5,9 @@ export type Role = 'Employee' | 'Technician' | 'Manager';
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
-export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE';
+export type Criticality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export const criticalities: Criticality[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
 export const statuses: Status[] = ['NEW', 'CLASSIFIED', 'ASSIGNED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED', 'CLOSED'];
 export const priorities: Priority[] = ['P1', 'P2', 'P3', 'P4'];
@@ -39,13 +41,27 @@ export interface Incident {
   status: Status; reporterId: number; reporterName: string; assigneeId: number | null; assigneeName: string | null;
   createdAt: string; acknowledgedAt: string | null; responseDueAt: string | null; resolutionDueAt: string | null;
   resolvedAt: string | null; sla: SlaState;
+  informationRequest: string | null; informationRequestedAt: string | null;   // open question to the reporter
   // Present on the detail endpoint only:
   resolution: Resolution | null; history: HistoryEntry[] | null; allowedActions: Action[] | null; similar: SimilarIncident[] | null;
 }
 
 export interface CreatedIncident { incident: Incident; possibleDuplicates: SimilarIncident[] }
 
-export interface Service { id: number; name: string; category: string; criticality: string; criticalityScore: number }
+export interface Service { id: number; name: string; category: string; criticality: Criticality; criticalityScore: number }
+
+export interface Category { code: string; label: string; active: boolean }
+
+export interface SlaPolicy { priority: Priority; responseMinutes: number; resolutionMinutes: number }
+
+export interface Settings { defaultAssignmentStrategy: string; assignmentStrategies: string[] }
+
+export interface AdminUser extends User { department: string | null; active: boolean }
+
+export interface NewAccount {
+  name: string; email: string; password: string; role: Role; department?: string;
+  skill?: string; experienceYears?: number;
+}
 
 export interface Technician {
   id: number; name: string; email: string; skill: string; workload: number; capacity: number;

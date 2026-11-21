@@ -48,7 +48,9 @@ On first start in development the API gives every seeded account the demo passwo
 
 1. **Report and prioritise.** Sign in as `support1@demo.local` and report a Tatkal booking or UPI payment failure with high impact and urgency. It is classified P1 with the reason shown, similar open incidents are flagged, and the manager gets in-app and email notifications.
 2. **Assign, investigate, resolve, close.** As `admin1@demo.local`, assign with the skill- or load-based strategy. As the assigned technician, acknowledge, start, add notes and resolve with a root cause. As the employee, confirm the fix and rate it. As the manager, close it. The history shows every step with its before and after state.
-3. **SLA monitoring and escalation.** Leave a P1/P2 unacknowledged: the SLA monitor records the violation and escalates to the IT manager (see Notifications and Management → Email outbox).
+3. **Ask the reporter.** As the assigned technician, use *Ask the reporter for information*; the incident can't be resolved until the employee answers on the same page (both get notified).
+4. **IT manager settings** (*Settings* in the menu): add and deactivate accounts, set technician skills and availability, add services and change their criticality, change SLA targets (new incidents only), rename or switch off categories, and pick the default assignment strategy.
+5. **SLA monitoring and escalation.** Leave a P1/P2 unacknowledged: the SLA monitor records the violation and escalates to the IT manager (see Notifications and Management → Email outbox).
 
 ## Checks
 
@@ -75,4 +77,4 @@ tests/                  Node tests
 
 ## Boundaries
 
-Demo data only; do not enter real passenger or operational data. Email is simulated (stored in an outbox and printed by the service). Admin editing of users, services, categories and SLA policies is not built yet (those endpoints return 501). The API keeps sessions in memory, so restarting it signs everyone out.
+Demo data only; do not enter real passenger or operational data. Email is simulated (stored in an outbox and printed by the service). The API keeps sessions in memory, so restarting it signs everyone out.

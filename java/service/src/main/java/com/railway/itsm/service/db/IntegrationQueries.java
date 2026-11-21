@@ -20,7 +20,9 @@ import java.util.Map;
  */
 public class IntegrationQueries {
 
-    public record Extras(Instant acknowledgedAt, int affectedUsers) {}
+    public record Extras(Instant acknowledgedAt, int affectedUsers, String infoRequest, Instant infoRequestedAt) {}
+
+    public record CategoryRow(String code, String label, boolean active) {}
 
     public record NotificationRow(long id, String incidentId, String channel, String type, String message,
                                   Instant createdAt, boolean read) {}
@@ -32,9 +34,9 @@ public class IntegrationQueries {
     }
 
     public Map<String, Extras> extras() {
-        return query("SELECT incident_id, acknowledged_at, affected_users FROM incidents", ps -> {}, rs -> {
+        return query("SELECT incident_id, acknowledged_at, affected_users, info_request, info_requested_at FROM incidents", ps -> {}, rs -> {
             Map<String, Extras> map = new HashMap<>();
-            while (rs.next()) map.put(rs.getString(1), new Extras(instant(rs.getTimestamp(2)), rs.getInt(3)));
+            while (rs.next()) map.put(rs.getString(1), new Extras(instant(rs.getTimestamp(2)), rs.getInt(3), rs.getString(4), instant(rs.getTimestamp(5))));
             return map;
         });
     }
@@ -53,6 +55,55 @@ public class IntegrationQueries {
 
     public void setAcknowledgedAt(String incidentId, Instant at) {
         update("UPDATE incidents SET acknowledged_at = ? WHERE incident_id = ?", ps -> { ps.setTimestamp(1, Timestamp.valueOf(Mapping.local(at))); ps.setString(2, incidentId); });
+    }
+
+    public void setInfoRequest(String incidentId, String question, Instant at) {
+        update("UPDATE incidents SET info_request = ?, info_requested_at = ? WHERE incident_id = ?", ps -> {
+            ps.setString(1, question); ps.setTimestamp(2, Timestamp.valueOf(Mapping.local(at))); ps.setString(3, incidentId);
+        });
+    }
+
+    public void clearInfoRequest(String incidentId) {
+        update("UPDATE incidents SET info_request = NULL, info_requested_at = NULL WHERE incident_id = ?", ps -> ps.setString(1, incidentId));
+    }
+
+    /** Deactivated accounts: they cannot sign in and are never assigned new work. */
+    public java.util.Set<Long> inactiveUserIds() {
+        return query("SELECT user_id FROM users WHERE active = FALSE", ps -> {}, rs -> {
+            java.util.Set<Long> ids = new java.util.HashSet<>();
+            while (rs.next()) ids.add(rs.getLong(1));
+            return ids;
+        });
+    }
+
+    public List<CategoryRow> categories() {
+        return query("SELECT code, label, active FROM categories ORDER BY label", ps -> {}, rs -> {
+            List<CategoryRow> list = new ArrayList<>();
+            while (rs.next()) list.add(new CategoryRow(rs.getString(1), rs.getString(2), rs.getBoolean(3)));
+            return list;
+        });
+    }
+
+    public boolean updateCategory(String code, String label, Boolean active) {
+        return update("UPDATE categories SET label = COALESCE(?, label), active = COALESCE(?, active) WHERE code = ?", ps -> {
+            ps.setString(1, label); ps.setObject(2, active, java.sql.Types.BOOLEAN); ps.setString(3, code);
+        }) > 0;
+    }
+
+    public String setting(String key, String fallback) {
+        return query("SELECT setting_value FROM settings WHERE setting_key = ?", ps -> ps.setString(1, key),
+            rs -> rs.next() ? rs.getString(1) : fallback);
+    }
+
+    public void setSetting(String key, String value) {
+        update("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value",
+            ps -> { ps.setString(1, key); ps.setString(2, value); });
+    }
+
+    public boolean updateService(long serviceId, String name, String category, String criticality) {
+        return update("UPDATE it_services SET service_name = ?, category = ?, business_criticality = ? WHERE service_id = ?", ps -> {
+            ps.setString(1, name); ps.setString(2, category); ps.setString(3, criticality); ps.setLong(4, serviceId);
+        }) > 0;
     }
 
     public void setSlaViolated(String incidentId) {

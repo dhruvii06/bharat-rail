@@ -3,7 +3,7 @@ import { createPool } from './db/pool.ts';
 import { setDemoPasswords } from './db/demoPasswords.ts';
 import { InMemorySessionRepository, InMemoryUserRepository } from './repositories/memory.ts';
 import { PostgresUserRepository } from './repositories/postgres.ts';
-import type { UserRepository } from './repositories/types.ts';
+import type { UserDirectory, UserRepository } from './repositories/types.ts';
 import { seedDemoUsers } from './seed/demoUsers.ts';
 
 // Composition root: picks concrete implementations and starts the server.
@@ -12,7 +12,7 @@ import { seedDemoUsers } from './seed/demoUsers.ts';
 
 const port = Number(process.env.PORT || 3001);
 const sessions = new InMemorySessionRepository();
-let users: UserRepository;
+let users: UserRepository & UserDirectory;
 
 if (process.env.ITSM_DB_PASSWORD) {
   const pool = createPool();

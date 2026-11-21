@@ -41,7 +41,7 @@ export function ReportIncident() {
           <option value="">Choose a service</option>{services.data?.map(s => <option key={s.id} value={s.id}>{s.name} ({humanize(s.criticality)})</option>)}
         </select></label>
         <label>Category<select id="category" required value={input.category} onChange={e => set('category', e.target.value)}>
-          <option value="">Choose a category</option>{categories.data?.map(c => <option key={c} value={c}>{humanize(c)}</option>)}
+          <option value="">Choose a category</option>{categories.data?.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
         </select></label>
       </div>
       <h2>Business impact</h2>

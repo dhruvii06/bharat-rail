@@ -159,7 +159,7 @@ describe('authorization on planned endpoints', () => {
   });
 
   test('allowed role gets 501 on endpoints not built yet', async () => {
-    const r = await call('GET', '/admin/users', { token: await login('mgr@test.local') });
+    const r = await call('GET', '/audit', { token: await login('mgr@test.local') });
     assert.equal(r.status, 501);
     assert.equal(r.body.error.code, 'NOT_IMPLEMENTED');
   });
@@ -227,5 +227,84 @@ describe('forwarding to the incident service', () => {
       assert.equal(res.status, 503);
       assert.match((await res.json()).error.message, /incident service is not running/);
     } finally { down.close(); }
+  });
+});
+
+describe('account administration (IT manager)', () => {
+  test('manager lists accounts without password hashes', async () => {
+    const r = await call('GET', '/admin/users', { token: await login('mgr@test.local') });
+    assert.equal(r.status, 200);
+    const emp = r.body.find(u => u.email === 'emp@test.local');
+    assert.equal(emp.active, true);
+    assert.equal('passwordHash' in emp, false);
+  });
+
+  test('employee and technician cannot manage accounts', async () => {
+    assert.equal((await call('GET', '/admin/users', { token: await login('emp@test.local') })).status, 403);
+    assert.equal((await call('POST', '/admin/users', { token: await login('tech@test.local'), body: {} })).status, 403);
+  });
+
+  test('creating a technician saves the skill profile through the incident service', async () => {
+    const r = await call('POST', '/admin/users', { token: await login('mgr@test.local'),
+      body: { name: 'New Tech', email: 'newtech@test.local', password: 'NewTech123', role: 'Technician', department: 'Payments', skill: 'PAYMENT', experienceYears: 3 } });
+    assert.equal(r.status, 201);
+    assert.equal(r.body.user.role, 'Technician');
+    assert.equal(r.body.warning, undefined);
+    assert.equal(lastForwarded.method, 'PUT');
+    assert.equal(lastForwarded.url, `/admin/technicians/${r.body.user.id}`);
+    assert.deepEqual(lastForwarded.body, { skill: 'PAYMENT', experienceYears: 3, available: true });
+    assert.equal((await call('POST', '/auth/login', { body: { email: 'newtech@test.local', password: 'NewTech123' } })).status, 200);
+  });
+
+  test('account input is validated', async () => {
+    const token = await login('mgr@test.local');
+    let r = await call('POST', '/admin/users', { token, body: { name: 'X Tech', email: 'x@test.local', password: 'Passw0rdOK', role: 'Technician' } });
+    assert.equal(r.status, 422);
+    assert.ok(r.body.error.fieldErrors.skill);
+    r = await call('POST', '/admin/users', { token, body: { name: 'Boss', email: 'boss@test.local', password: 'Passw0rdOK', role: 'Admin' } });
+    assert.ok(r.body.error.fieldErrors.role);
+    r = await call('POST', '/admin/users', { token, body: { name: 'Weak', email: 'weak@test.local', password: 'short', role: 'Employee' } });
+    assert.ok(r.body.error.fieldErrors.password);
+    r = await call('POST', '/admin/users', { token, body: { name: 'Dup', email: 'emp@test.local', password: 'Passw0rdOK', role: 'Employee' } });
+    assert.equal(r.status, 409);
+  });
+
+  test('a deactivated account is signed out and cannot sign in again', async () => {
+    const mgr = await login('mgr@test.local');
+    await call('POST', '/admin/users', { token: mgr, body: { name: 'Leaver', email: 'leaver@test.local', password: 'Leaver123', role: 'Employee' } });
+    const leaverToken = (await call('POST', '/auth/login', { body: { email: 'leaver@test.local', password: 'Leaver123' } })).body.token;
+    const id = (await call('GET', '/admin/users', { token: mgr })).body.find(u => u.email === 'leaver@test.local').id;
+    const r = await call('PATCH', `/admin/users/${id}`, { token: mgr, body: { active: false } });
+    assert.equal(r.body.user.active, false);
+    assert.equal((await call('GET', '/auth/me', { token: leaverToken })).status, 401);
+    assert.equal((await call('POST', '/auth/login', { body: { email: 'leaver@test.local', password: 'Leaver123' } })).status, 401);
+    await call('PATCH', `/admin/users/${id}`, { token: mgr, body: { active: true } });
+    assert.equal((await call('POST', '/auth/login', { body: { email: 'leaver@test.local', password: 'Leaver123' } })).status, 200);
+  });
+
+  test('manager cannot deactivate their own account; unknown users are 404', async () => {
+    const mgr = await login('mgr@test.local');
+    assert.equal((await call('PATCH', '/admin/users/m1', { token: mgr, body: { active: false } })).status, 409);
+    assert.equal((await call('PATCH', '/admin/users/nobody', { token: mgr, body: { name: 'Nobody' } })).status, 404);
+  });
+});
+
+describe('role gates on admin settings and the information step', () => {
+  test('only the technician role can ask for information; only employees answer', async () => {
+    assert.equal((await call('POST', '/incidents/INC-1/info-request', { token: await login('emp@test.local'), body: { question: 'x' } })).status, 403);
+    assert.equal((await call('POST', '/incidents/INC-1/info-request', { token: await login('tech@test.local'), body: { question: 'Which UPI app?' } })).status, 201);
+    assert.equal(lastForwarded.url, '/incidents/INC-1/info-request');
+    assert.equal((await call('POST', '/incidents/INC-1/info-response', { token: await login('tech@test.local'), body: { answer: 'x' } })).status, 403);
+    assert.equal((await call('POST', '/incidents/INC-1/info-response', { token: await login('emp@test.local'), body: { answer: 'PhonePe' } })).status, 201);
+  });
+
+  test('service, SLA, category and settings administration is manager-only and forwarded', async () => {
+    const tech = await login('tech@test.local'), mgr = await login('mgr@test.local');
+    for (const [method, path] of [['POST', '/admin/services'], ['PUT', '/admin/sla-policies/P1'], ['PATCH', '/admin/categories/PAYMENT'], ['PUT', '/admin/settings']]) {
+      assert.equal((await call(method, path, { token: tech, body: {} })).status, 403, `${method} ${path} as technician`);
+      await call(method, path, { token: mgr, body: { x: 1 } });
+      assert.equal(lastForwarded.url, path);
+      assert.equal(lastForwarded.headers['x-actor-role'], 'ADMIN');
+    }
   });
 });
