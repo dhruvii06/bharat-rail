@@ -4,6 +4,7 @@ import { useAuth } from './auth';
 import { Notifications } from './components/Notifications';
 import { IncidentDetail } from './pages/IncidentDetail';
 import { IncidentList } from './pages/IncidentList';
+import { ImpactSimulator } from './pages/ImpactSimulator';
 import { Login } from './pages/Login';
 import { Management } from './pages/Management';
 import { Overview } from './pages/Overview';
@@ -33,6 +34,7 @@ function Shell({ user }: { user: User }) {
       <NavLink to="/incidents" end>{user.role === 'Technician' ? 'My assignments' : user.role === 'Employee' ? 'My incidents' : 'Incidents'}</NavLink>
       {user.role === 'Employee' && <NavLink to="/incidents/new">Report incident</NavLink>}
       {user.role === 'Manager' && <NavLink to="/management">Management</NavLink>}
+      {user.role === 'Manager' && <NavLink to="/impact-simulator">Impact simulator</NavLink>}
       <div className="nav-bottom">I-ITSM<br /><span>Internal service management</span></div>
     </nav>
     <main>
@@ -42,6 +44,7 @@ function Shell({ user }: { user: User }) {
         <Route path="/incidents/new" element={user.role === 'Employee' ? <ReportIncident /> : <p>Only employees report incidents.</p>} />
         <Route path="/incidents/:id" element={<IncidentDetail user={user} />} />
         <Route path="/management" element={user.role === 'Manager' ? <Management /> : <p>This screen is for the IT manager.</p>} />
+        <Route path="/impact-simulator" element={user.role === 'Manager' ? <ImpactSimulator /> : <p>This screen is for the IT manager.</p>} />
         <Route path="*" element={<><h1>Page not found</h1><Link to="/">Return to overview</Link></>} />
       </Routes>
     </main>
