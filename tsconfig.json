@@ -5,5 +5,5 @@
     "strict": true, "noEmit": true, "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "shared", "tests"]
+  "include": ["src", "shared", "tests", "backend"]
 }
