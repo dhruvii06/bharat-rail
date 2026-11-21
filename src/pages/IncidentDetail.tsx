@@ -39,6 +39,12 @@ export function IncidentDetail({ user }: { user: User }) {
     {flash.justCreated && <p className="notice-box" role="status">Incident created and classified as <strong>{incident.priority}</strong>. The IT manager has been notified.</p>}
     {duplicates.length > 0 && <div className="warning-box"><strong>Possible duplicates.</strong> These open incidents look similar: {duplicates.map((d, n) => <span key={d.id}>{n > 0 && ', '}<Link to={`/incidents/${d.id}`}>{d.id}</Link> ({d.title})</span>)}.</div>}
 
+    {incident.informationRequest && <div className="warning-box" role="status">
+      <strong>{user.role === 'Employee' ? 'The technician needs more information from you.' : 'Waiting for the reporter to answer.'}</strong>
+      <p className="preserve">{incident.informationRequest}</p>
+      <small>Asked {formatDate(incident.informationRequestedAt)}{user.role === 'Technician' && ' · you can resolve once the reporter answers'}</small>
+    </div>}
+
     <div className="detail-grid">
       <section className="facts">
         <h2>Details</h2>
@@ -71,6 +77,10 @@ export function IncidentDetail({ user }: { user: User }) {
         {has('ASSIGN') && <AssignForm busy={busy} onAssign={choice => run(() => api.assign(incident.id, choice))} />}
         {has('ACKNOWLEDGE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'ACKNOWLEDGE'))}>Acknowledge</button>}
         {has('START') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'START'))}>Start investigation</button>}
+        {has('REQUEST_INFO') && <TextAction id="question" label="Ask the reporter for information" button="Send question" min={5} max={1000}
+          placeholder="e.g. Which UPI app was used, and what is the transaction ID?" busy={busy} onSubmit={q => run(() => api.requestInfo(incident.id, q))} />}
+        {has('PROVIDE_INFO') && <TextAction id="answer" label="Your answer" button="Send answer" min={2} max={2000}
+          placeholder="Answer the technician's question" busy={busy} onSubmit={a => run(() => api.provideInfo(incident.id, a))} />}
         {has('RESOLVE') && <ResolveForm busy={busy} onResolve={(summary, rootCause) => run(() => api.transition(incident.id, 'RESOLVE', { summary, rootCause }))} />}
         {has('VERIFY') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'VERIFY'))}>Confirm the fix works</button>}
         {has('FEEDBACK') && <FeedbackForm busy={busy} onRate={rating => run(() => api.feedback(incident.id, rating))} />}
@@ -123,6 +133,16 @@ function FeedbackForm({ busy, onRate }: { busy: boolean; onRate: (rating: number
   return <div className="action-form inline">
     <label>Rate the resolution<select id="rating" value={rating} onChange={e => setRating(Number(e.target.value))}>{[5, 4, 3, 2, 1].map(r => <option key={r} value={r}>{r} / 5</option>)}</select></label>
     <button disabled={busy} onClick={() => onRate(rating)}>Send feedback</button>
+  </div>;
+}
+
+function TextAction({ id, label, button, min, max, placeholder, busy, onSubmit }: {
+  id: string; label: string; button: string; min: number; max: number; placeholder: string; busy: boolean; onSubmit: (text: string) => void
+}) {
+  const [text, setText] = useState('');
+  return <div className="action-form">
+    <label>{label}<textarea id={id} className="short" maxLength={max} value={text} onChange={e => setText(e.target.value)} placeholder={placeholder} /></label>
+    <button disabled={busy || text.trim().length < min} onClick={() => { onSubmit(text); setText(''); }}>{button}</button>
   </div>;
 }
 

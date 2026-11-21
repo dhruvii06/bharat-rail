@@ -30,7 +30,7 @@ export function IncidentRows({ items, showAssignee = true }: { items: Incident[]
       <td><Link to={`/incidents/${i.id}`}>{i.title}</Link><small>{i.id} · {formatDate(i.createdAt)}</small></td>
       <td>{i.serviceName}<small>{humanize(i.category)}</small></td>
       <td><PriorityBadge priority={i.priority} /></td>
-      <td><StatusTag status={i.status} /></td>
+      <td><StatusTag status={i.status} />{i.informationRequest && <small className="waiting">Waiting for reporter</small>}</td>
       {showAssignee && <td>{i.assigneeName ?? <span className="muted">Unassigned</span>}</td>}
       <td><SlaTag sla={i.sla} /></td>
     </tr>)}</tbody>

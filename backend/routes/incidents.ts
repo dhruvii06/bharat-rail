@@ -11,7 +11,7 @@ const ALL: Role[] = ['Employee', 'Technician', 'Manager'];
 export function incidentRoutes(service: IncidentServiceClient): Router {
   const r = Router();
   const forward = service.proxy();
-  const route = (method: 'get' | 'post', path: string, roles: Role[]) => r[method](path, requireRole(...roles), forward);
+  const route = (method: 'get' | 'post' | 'put' | 'patch', path: string, roles: Role[]) => r[method](path, requireRole(...roles), forward);
 
   route('get', '/incidents', ALL);                              // role-scoped queue, filters as query string
   route('post', '/incidents', ['Employee']);                    // report: classify, prioritise, find duplicates
@@ -21,6 +21,8 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('post', '/incidents/:id/notes', ALL);                   // {text}
   route('post', '/incidents/:id/feedback', ['Employee']);       // {rating: 1-5}
   route('get', '/incidents/:id/similar', ['Technician', 'Manager']);
+  route('post', '/incidents/:id/info-request', ['Technician']);  // {question}: assigned technician asks the reporter
+  route('post', '/incidents/:id/info-response', ['Employee']);   // {answer}: the reporter replies
 
   route('get', '/services', ALL);
   route('get', '/categories', ALL);
@@ -33,5 +35,17 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('post', '/notifications/:id/read', ALL);
 
   route('get', '/reports/overview', ['Manager']);
+
+  // Administration (Manager only). User accounts are handled in routes/adminUsers.ts.
+  route('get', '/admin/services', ['Manager']);
+  route('post', '/admin/services', ['Manager']);                // {name, category, criticality}
+  route('patch', '/admin/services/:id', ['Manager']);
+  route('get', '/admin/sla-policies', ['Manager']);
+  route('put', '/admin/sla-policies/:id', ['Manager']);         // :id = P1..P4, {responseMinutes, resolutionMinutes}
+  route('get', '/admin/categories', ['Manager']);
+  route('patch', '/admin/categories/:id', ['Manager']);         // {label?, active?}
+  route('get', '/admin/settings', ['Manager']);
+  route('put', '/admin/settings', ['Manager']);                 // {defaultAssignmentStrategy}
+  route('put', '/admin/technicians/:id', ['Manager']);          // {skill?, experienceYears?, available?}
   return r;
 }

@@ -32,6 +32,19 @@ export class BodyValidator {
     return value;
   }
 
+  /** Absent or empty → undefined; otherwise checked like string(). */
+  optionalString(field: string, opts: { max?: number } = {}): string | undefined {
+    const raw = this.body[field];
+    if (raw === undefined || raw === null || (typeof raw === 'string' && raw.trim() === '')) return undefined;
+    return this.string(field, { min: 1, max: opts.max ?? 200 });
+  }
+
+  boolean(field: string): boolean {
+    const raw = this.body[field];
+    if (typeof raw !== 'boolean') { this.errors[field] = 'Must be true or false.'; return false; }
+    return raw;
+  }
+
   done(): void {
     if (Object.keys(this.errors).length) throw new ValidationError({ ...this.errors });
   }

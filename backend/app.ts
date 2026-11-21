@@ -3,7 +3,8 @@ import { AuthService } from './auth/AuthService.ts';
 import { requireAuth } from './auth/middleware.ts';
 import { errorHandler, notFound } from './http/errorHandler.ts';
 import { IncidentServiceClient } from './http/incidentService.ts';
-import type { SessionRepository, UserRepository } from './repositories/types.ts';
+import type { SessionRepository, UserDirectory, UserRepository } from './repositories/types.ts';
+import { adminUserRoutes } from './routes/adminUsers.ts';
 import { authRoutes } from './routes/auth.ts';
 import { incidentRoutes } from './routes/incidents.ts';
 import { plannedRoutes } from './routes/planned.ts';
@@ -11,7 +12,7 @@ import { plannedRoutes } from './routes/planned.ts';
 export const DEV_INTERNAL_TOKEN = 'dev-internal-token';
 
 export interface AppDeps {
-  users: UserRepository;
+  users: UserRepository & UserDirectory;
   sessions: SessionRepository;
   auth?: AuthService;
   incidentService?: IncidentServiceClient;
@@ -36,7 +37,7 @@ export function createApp(deps: AppDeps): Express {
   const api = express.Router();
   api.get('/health', (_req, res) => { res.json({ status: 'ok', time: new Date().toISOString() }); });
   api.use('/auth', authRoutes(auth));
-  api.use(requireAuth(auth), incidentRoutes(incidents), plannedRoutes());
+  api.use(requireAuth(auth), adminUserRoutes(deps.users, deps.users, incidents), incidentRoutes(incidents), plannedRoutes());
 
   app.use('/api/v1', api);
   app.use(notFound);

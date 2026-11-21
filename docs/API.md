@@ -32,6 +32,8 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/incidents/:id/notes` | all (if visible) | `{text}`; recorded in the history |
 | POST | `/incidents/:id/feedback` | Employee (reporter) | `{rating: 1-5}` once the incident is resolved |
 | GET | `/incidents/:id/similar` | Technician, Manager | Possible duplicates |
+| POST | `/incidents/:id/info-request` | Technician (assigned) | `{question}` while ACKNOWLEDGED or IN_PROGRESS; one open question at a time; blocks RESOLVE until answered |
+| POST | `/incidents/:id/info-response` | Employee (reporter) | `{answer}`; clears the open question |
 | GET | `/services`, `/categories` | all | Service catalogue (with criticality) and categories |
 | GET | `/assignment-strategies`, `/technicians` | Manager | Strategy names; technicians with skill and workload |
 | GET | `/notifications` | all | In-app channel: `{items, unread}` |
@@ -39,7 +41,25 @@ Send `Authorization: Bearer <token>` on every other call.
 | GET | `/notifications/outbox` | Manager | Simulated email channel |
 | GET | `/reports/overview` | Manager | Totals, SLA compliance, average resolution time, by service / priority / status, workload |
 
-Not built yet (role-checked, return 501): `PATCH /incidents/:id`, `/admin/users`, `/admin/services`, `/admin/categories`, `/admin/sla-policies`, `/audit`.
+## Administration (IT manager only)
+
+| Method | Endpoint | Handled by | Behaviour |
+| --- | --- | --- | --- |
+| GET | `/admin/users` | Node | All accounts with department and active flag |
+| POST | `/admin/users` | Node (+ Java for the technician profile) | `{name, email, password, role, department?, skill?, experienceYears?}`; `skill` required for technicians |
+| PATCH | `/admin/users/:id` | Node | `{name?, department?, active?}`; deactivated accounts are signed out and cannot sign in or be assigned; you cannot deactivate yourself |
+| PUT | `/admin/technicians/:id` | Java | `{skill?, experienceYears?, available?}`; workload is kept |
+| GET / POST | `/admin/services` | Java | `{name, category, criticality: CRITICAL / HIGH / MEDIUM / LOW}` |
+| PATCH | `/admin/services/:id` | Java | Any of name, category, criticality |
+| GET | `/admin/sla-policies` | Java | Targets per priority in minutes |
+| PUT | `/admin/sla-policies/:priority` | Java | `{responseMinutes, resolutionMinutes}`; resolution must be longer; applies to new incidents only |
+| GET | `/admin/categories` | Java | All categories with label and on/off |
+| PATCH | `/admin/categories/:code` | Java | `{label?, active?}`; switched-off categories can't be reported; at least one must stay on |
+| GET / PUT | `/admin/settings` | Java | `{defaultAssignmentStrategy: "skill" \| "load"}`, used when Assign is pressed without a choice |
+
+`GET /categories` (all roles) returns only active categories as `{code, label}`.
+
+Not built yet (role-checked, return 501): `PATCH /incidents/:id`, `/audit`.
 
 ## Lifecycle and who may act
 

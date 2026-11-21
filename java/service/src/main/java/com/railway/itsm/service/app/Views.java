@@ -12,7 +12,7 @@ public final class Views {
                                int affectedUsers, boolean tatkalWindow, String priority, String priorityReason,
                                String status, Long reporterId, String reporterName, Long assigneeId, String assigneeName,
                                Instant createdAt, Instant acknowledgedAt, Instant responseDueAt, Instant resolutionDueAt,
-                               Instant resolvedAt, String sla,
+                               Instant resolvedAt, String sla, String informationRequest, Instant informationRequestedAt,
                                ResolutionView resolution, List<HistoryView> history, List<String> allowedActions,
                                List<SimilarView> similar) {}
 
@@ -32,6 +32,12 @@ public final class Views {
     public record NotificationView(long id, String incidentId, String type, String message, Instant createdAt, boolean read) {}
 
     public record NotificationList(List<NotificationView> items, long unread) {}
+
+    public record CategoryView(String code, String label, boolean active) {}
+
+    public record SlaPolicyView(String priority, int responseMinutes, int resolutionMinutes) {}
+
+    public record SettingsView(String defaultAssignmentStrategy, List<String> assignmentStrategies) {}
 
     public record CreatedIncident(IncidentView incident, List<SimilarView> possibleDuplicates) {}
 

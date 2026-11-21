@@ -1,5 +1,6 @@
 import type {
-  Action, CreatedIncident, EmailOutboxEntry, Incident, IncidentInput, Notification, Overview, Service, Technician, User
+  Action, AdminUser, Category, CreatedIncident, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
+  Overview, Service, Settings, SlaPolicy, Technician, User
 } from '../../shared/domain.ts';
 
 // HTTP client for the Node API (/api/v1). The Vite dev server forwards /api to the API on port 3001.
@@ -79,13 +80,15 @@ export const api = {
   incident: (id: string) => request<Incident>('GET', `/incidents/${encodeURIComponent(id)}`),
   report: (input: IncidentInput) => request<CreatedIncident>('POST', '/incidents', input),
   assign: (id: string, choice: { strategy?: string; technicianId?: number }) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/assignment`, choice),
-  transition: (id: string, action: Exclude<Action, 'ASSIGN' | 'FEEDBACK' | 'NOTE'>, details: { summary?: string; rootCause?: string } = {}) =>
+  transition: (id: string, action: 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'VERIFY' | 'CLOSE', details: { summary?: string; rootCause?: string } = {}) =>
     request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/transitions`, { action, ...details }),
   note: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/notes`, { text }),
   feedback: (id: string, rating: number) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/feedback`, { rating }),
+  requestInfo: (id: string, question: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/info-request`, { question }),
+  provideInfo: (id: string, answer: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/info-response`, { answer }),
 
   services: () => request<Service[]>('GET', '/services'),
-  categories: () => request<string[]>('GET', '/categories'),
+  categories: () => request<Category[]>('GET', '/categories'),
   strategies: () => request<string[]>('GET', '/assignment-strategies'),
   technicians: () => request<Technician[]>('GET', '/technicians'),
 
@@ -94,5 +97,26 @@ export const api = {
   readAllNotifications: () => request<void>('POST', '/notifications/read-all'),
   emailOutbox: () => request<EmailOutboxEntry[]>('GET', '/notifications/outbox'),
 
-  overview: () => request<Overview>('GET', '/reports/overview')
+  overview: () => request<Overview>('GET', '/reports/overview'),
+
+  // IT manager administration
+  admin: {
+    users: () => request<AdminUser[]>('GET', '/admin/users'),
+    createUser: (account: NewAccount) => request<{ user: AdminUser; warning?: string }>('POST', '/admin/users', account),
+    updateUser: (id: string, patch: { name?: string; department?: string | null; active?: boolean }) =>
+      request<{ user: AdminUser }>('PATCH', `/admin/users/${encodeURIComponent(id)}`, patch),
+    saveTechnician: (id: number | string, profile: { skill?: string; experienceYears?: number; available?: boolean }) =>
+      request<Technician>('PUT', `/admin/technicians/${encodeURIComponent(String(id))}`, profile),
+    services: () => request<Service[]>('GET', '/admin/services'),
+    createService: (service: { name: string; category: string; criticality: Criticality }) => request<Service>('POST', '/admin/services', service),
+    updateService: (id: number, patch: { name?: string; category?: string; criticality?: Criticality }) =>
+      request<Service>('PATCH', `/admin/services/${id}`, patch),
+    slaPolicies: () => request<SlaPolicy[]>('GET', '/admin/sla-policies'),
+    updateSlaPolicy: (priority: string, responseMinutes: number, resolutionMinutes: number) =>
+      request<SlaPolicy>('PUT', `/admin/sla-policies/${priority}`, { responseMinutes, resolutionMinutes }),
+    categories: () => request<Category[]>('GET', '/admin/categories'),
+    updateCategory: (code: string, patch: { label?: string; active?: boolean }) => request<Category>('PATCH', `/admin/categories/${code}`, patch),
+    settings: () => request<Settings>('GET', '/admin/settings'),
+    updateSettings: (defaultAssignmentStrategy: string) => request<Settings>('PUT', '/admin/settings', { defaultAssignmentStrategy })
+  }
 };

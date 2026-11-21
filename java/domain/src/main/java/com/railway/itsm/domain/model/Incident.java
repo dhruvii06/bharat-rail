@@ -25,6 +25,8 @@ public final class Incident {
     private Instant acknowledgedAt;
     private Instant resolvedAt;
     private Resolution resolution;
+    private String informationRequest;
+    private Instant informationRequestedAt;
     public Incident(String title,String description,Employee reporter,RailwayService affectedService,
                     IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                     boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
@@ -53,13 +55,29 @@ public final class Incident {
                                    boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt,
                                    IncidentStatus status,Priority priority,Technician assignedTechnician,
                                    Instant acknowledgedAt,Instant resolvedAt,Resolution resolution){
+        return restore(id,title,description,reporter,affectedService,category,impact,urgency,affectedUsers,
+                       criticalSecurityIncident,peakTatkalIncident,createdAt,status,priority,assignedTechnician,
+                       acknowledgedAt,resolvedAt,resolution,null,null,null);
+    }
+    /**
+     * Restore variant that also carries the SLA targets the incident was created with (so later policy
+     * changes do not move its deadlines) and any open request for information to the reporter.
+     */
+    public static Incident restore(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+                                   IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
+                                   boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt,
+                                   IncidentStatus status,Priority priority,Technician assignedTechnician,
+                                   Instant acknowledgedAt,Instant resolvedAt,Resolution resolution,
+                                   SLAPolicy slaPolicy,String informationRequest,Instant informationRequestedAt){
         Incident incident=new Incident(id,title,description,reporter,affectedService,category,impact,urgency,
                                        affectedUsers,criticalSecurityIncident,peakTatkalIncident,createdAt);
         incident.status=Objects.requireNonNull(status);
         if(status!=IncidentStatus.NEW && priority==null)
             throw new IllegalArgumentException("A classified incident needs a priority");
         incident.priority=priority;
-        incident.slaPolicy=priority==null?null:SLAPolicy.forPriority(priority);
+        incident.slaPolicy=priority==null?null:slaPolicy!=null?slaPolicy:SLAPolicy.forPriority(priority);
+        incident.informationRequest=informationRequest==null||informationRequest.isBlank()?null:informationRequest;
+        incident.informationRequestedAt=incident.informationRequest==null?null:informationRequestedAt;
         if(status.compareTo(IncidentStatus.ASSIGNED)>=0 && assignedTechnician==null)
             throw new IllegalArgumentException("An assigned incident needs a technician");
         incident.assignedTechnician=assignedTechnician;
@@ -67,8 +85,13 @@ public final class Incident {
         return incident;
     }
     public void classify(Priority priority,User actor,Instant now){
+        classify(priority,SLAPolicy.forPriority(priority),actor,now);
+    }
+    /** Classifies with a configured SLA policy (for example one the IT manager changed). */
+    public void classify(Priority priority,SLAPolicy policy,User actor,Instant now){
         require(IncidentStatus.NEW);
-        this.priority=Objects.requireNonNull(priority);this.slaPolicy=SLAPolicy.forPriority(priority);
+        if(policy==null||policy.priority()!=priority) throw new IllegalArgumentException("SLA policy must match the priority");
+        this.priority=Objects.requireNonNull(priority);this.slaPolicy=policy;
         move(IncidentStatus.CLASSIFIED,actor,"CLASSIFIED","Priority="+priority,now);
     }
     public void assign(Technician technician,User actor,Instant now){
@@ -86,8 +109,30 @@ public final class Incident {
         requireAssignedActor(actor);require(IncidentStatus.ACKNOWLEDGED);
         move(IncidentStatus.IN_PROGRESS,actor,"INVESTIGATING","Investigation started",now);
     }
+    /**
+     * The assigned technician asks the reporter for more information. Allowed while the incident is
+     * acknowledged or in progress, one open question at a time. The status does not change.
+     */
+    public void requestInformation(Technician actor,String question,Instant now){
+        requireAssignedActor(actor);
+        if(status!=IncidentStatus.ACKNOWLEDGED && status!=IncidentStatus.IN_PROGRESS)
+            throw new InvalidTransitionException("Information can be requested only while acknowledged or in progress; actual "+status);
+        if(informationRequest!=null) throw new InvalidTransitionException("Already waiting for the reporter to answer an earlier question");
+        if(question==null||question.isBlank()) throw new IllegalArgumentException("A question is required");
+        informationRequest=question.trim();informationRequestedAt=Objects.requireNonNull(now);
+        record(actor,"INFO_REQUESTED",status,status,informationRequest,now);
+    }
+    /** The reporter answers the open question, which clears it. */
+    public void provideInformation(Employee actor,String answer,Instant now){
+        if(actor==null||!reporter.getId().equals(actor.getId())) throw new UnauthorizedIncidentOperationException("Only the reporter can answer the technician's question");
+        if(informationRequest==null) throw new InvalidTransitionException("No information has been requested");
+        if(answer==null||answer.isBlank()) throw new IllegalArgumentException("An answer is required");
+        informationRequest=null;informationRequestedAt=null;
+        record(actor,"INFO_PROVIDED",status,status,answer.trim(),Objects.requireNonNull(now));
+    }
     public void resolve(Technician actor,String summary,String rootCause,Instant now){
         requireAssignedActor(actor);require(IncidentStatus.IN_PROGRESS);
+        if(informationRequest!=null) throw new InvalidTransitionException("Waiting for the reporter to answer: "+informationRequest);
         this.resolution=new Resolution(summary,rootCause,Objects.requireNonNull(now));
         resolvedAt=now;move(IncidentStatus.RESOLVED,actor,"RESOLVED",summary,now);
         assignedTechnician.finishIncident();
@@ -134,5 +179,8 @@ public final class Incident {
     public Instant getAcknowledgedAt(){return acknowledgedAt;}
     public Instant getResolvedAt(){return resolvedAt;}
     public Resolution getResolution(){return resolution;}
+    public boolean isAwaitingInformation(){return informationRequest!=null;}
+    public String getInformationRequest(){return informationRequest;}
+    public Instant getInformationRequestedAt(){return informationRequestedAt;}
     public List<AuditEntry> getAuditTrail(){return List.copyOf(auditTrail);}
 }

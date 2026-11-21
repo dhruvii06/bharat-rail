@@ -11,7 +11,8 @@ export interface UserRecord {
   role: Role;
   passwordHash: string;     // see backend/auth/passwords.ts, never sent to clients
   isTeamLead: boolean;      // technicians only; used by escalation in Phase 3
-  active: boolean;
+  active: boolean;          // deactivated accounts cannot sign in
+  department?: string | null;
   createdAt: string;        // ISO 8601 UTC
 }
 
@@ -23,6 +24,14 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | undefined>;
   /** Throws ConflictError when the email is already registered. */
   create(user: NewUser): Promise<UserRecord>;
+}
+
+export interface UserPatch { name?: string; department?: string | null; active?: boolean }
+
+/** Account administration for the IT manager (list and edit; creation uses UserRepository.create). */
+export interface UserDirectory {
+  list(): Promise<UserRecord[]>;
+  update(id: string, patch: UserPatch): Promise<UserRecord | undefined>;
 }
 
 export interface SessionRecord {

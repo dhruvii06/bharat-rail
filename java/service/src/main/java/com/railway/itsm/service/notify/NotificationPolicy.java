@@ -27,7 +27,9 @@ public final class NotificationPolicy {
             Map.entry("CLOSED", new Rule(Set.of(Audience.REPORTER, Audience.ASSIGNEE), Set.of(Audience.REPORTER))),
             Map.entry("SLA_WARNING", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), NONE)),
             Map.entry("SLA_VIOLATED", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), Set.of(Audience.MANAGERS))),
-            Map.entry("ESCALATED", new Rule(Set.of(Audience.MANAGERS), Set.of(Audience.MANAGERS))));
+            Map.entry("ESCALATED", new Rule(Set.of(Audience.MANAGERS), Set.of(Audience.MANAGERS))),
+            Map.entry("INFO_REQUESTED", new Rule(Set.of(Audience.REPORTER), Set.of(Audience.REPORTER))),
+            Map.entry("INFO_PROVIDED", new Rule(Set.of(Audience.ASSIGNEE), NONE)));
 
     public Set<Long> recipients(String eventType, Channel channel, Long reporterId, Long assigneeId, List<Long> managerIds) {
         Rule rule = RULES.get(eventType);

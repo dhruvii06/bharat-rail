@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { ConflictError } from '../errors.ts';
-import type { NewUser, SessionRecord, SessionRepository, UserRecord, UserRepository } from './types.ts';
+import type { NewUser, SessionRecord, SessionRepository, UserDirectory, UserPatch, UserRecord, UserRepository } from './types.ts';
 
 // In-memory repositories for Phase 1 and for API tests. Data is lost on restart.
 
-export class InMemoryUserRepository implements UserRepository {
+export class InMemoryUserRepository implements UserRepository, UserDirectory {
   private readonly byId = new Map<string, UserRecord>();
   private readonly idByEmail = new Map<string, string>();
 
@@ -22,6 +22,16 @@ export class InMemoryUserRepository implements UserRepository {
     this.byId.set(record.id, record);
     this.idByEmail.set(email, record.id);
     return record;
+  }
+
+  async list() { return [...this.byId.values()]; }
+
+  async update(id: string, patch: UserPatch) {
+    const user = this.byId.get(id);
+    if (!user) return undefined;
+    const updated = { ...user, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) } as UserRecord;
+    this.byId.set(id, updated);
+    return updated;
   }
 }
 

@@ -43,6 +43,7 @@ public final class ApiServer {
         String id() { return path.get("id"); }
         String text(String field) { JsonNode n = body.get(field); return n == null || n.isNull() ? null : n.asText(); }
         Integer integer(String field) { JsonNode n = body.get(field); return n == null || n.isNull() ? null : n.isInt() ? n.asInt() : Integer.valueOf(n.asText()); }
+        Boolean bool(String field) { JsonNode n = body.get(field); return n == null || n.isNull() ? null : n.asBoolean(); }
         Long number(String field) { JsonNode n = body.get(field); return n == null || n.isNull() || n.asText().isBlank() ? null : Long.valueOf(n.asText()); }
     }
 
@@ -71,6 +72,8 @@ public final class ApiServer {
         route("POST", "/incidents/{id}/notes", 200, r -> workflow.addNote(r.actor(), r.id(), r.text("text")));
         route("POST", "/incidents/{id}/feedback", 200, r -> workflow.feedback(r.actor(), r.id(), r.integer("rating")));
         route("GET", "/incidents/{id}/similar", 200, r -> workflow.similar(r.actor(), r.id()));
+        route("POST", "/incidents/{id}/info-request", 200, r -> workflow.requestInformation(r.actor(), r.id(), r.text("question")));
+        route("POST", "/incidents/{id}/info-response", 200, r -> workflow.provideInformation(r.actor(), r.id(), r.text("answer")));
         route("GET", "/services", 200, r -> workflow.services());
         route("GET", "/categories", 200, r -> workflow.categories());
         route("GET", "/assignment-strategies", 200, r -> workflow.assignmentStrategies());
@@ -80,6 +83,18 @@ public final class ApiServer {
         route("POST", "/notifications/read-all", 204, r -> { workflow.markAllRead(r.actor()); return null; });
         route("POST", "/notifications/{id}/read", 204, r -> { workflow.markRead(r.actor(), Long.parseLong(r.id())); return null; });
         route("GET", "/reports/overview", 200, r -> workflow.overview(r.actor()));
+
+        // Administration (IT manager). User accounts are managed by the Node API, which owns passwords.
+        route("GET", "/admin/services", 200, r -> workflow.adminServices(r.actor()));
+        route("POST", "/admin/services", 201, r -> workflow.createService(r.actor(), r.text("name"), r.text("category"), r.text("criticality")));
+        route("PATCH", "/admin/services/{id}", 200, r -> workflow.updateService(r.actor(), Long.parseLong(r.id()), r.text("name"), r.text("category"), r.text("criticality")));
+        route("GET", "/admin/sla-policies", 200, r -> workflow.slaPolicies(r.actor()));
+        route("PUT", "/admin/sla-policies/{id}", 200, r -> workflow.updateSlaPolicy(r.actor(), r.id(), r.integer("responseMinutes"), r.integer("resolutionMinutes")));
+        route("GET", "/admin/categories", 200, r -> workflow.adminCategories(r.actor()));
+        route("PATCH", "/admin/categories/{id}", 200, r -> workflow.updateCategory(r.actor(), r.id(), r.text("label"), r.bool("active")));
+        route("GET", "/admin/settings", 200, r -> workflow.settings(r.actor()));
+        route("PUT", "/admin/settings", 200, r -> workflow.updateSettings(r.actor(), r.text("defaultAssignmentStrategy")));
+        route("PUT", "/admin/technicians/{id}", 200, r -> workflow.saveTechnicianProfile(r.actor(), Long.parseLong(r.id()), r.text("skill"), r.integer("experienceYears"), r.bool("available")));
     }
 
     private void route(String method, String template, int status, Handler handler) {

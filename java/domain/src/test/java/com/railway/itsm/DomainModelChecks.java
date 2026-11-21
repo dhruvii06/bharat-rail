@@ -92,6 +92,22 @@ public final class DomainModelChecks {
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.MEDIUM,false,false))==Priority.P2_HIGH,"score 12 P2");
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.LOW,false,false))==Priority.P3_MEDIUM,"score 6 P3");
         check(priority.calculate(incident(Impact.LOW,Urgency.LOW,false,true))==Priority.P4_LOW,"Tatkal without maximum impact and urgency does not override");
+        Incident ask=incident(Impact.HIGH,Urgency.HIGH,false,false);
+        ask.classify(priority.calculate(ask),ADMIN,START);
+        Technician helper=new Technician("Helper","helper@example.test",Set.of(Skill.PAYMENTS),3);
+        ask.assign(helper,ADMIN,START);
+        throwsException(InvalidTransitionException.class,()->ask.requestInformation(helper,"Which UPI app?",START),"cannot request information before acknowledging");
+        ask.acknowledge(helper,START.plusSeconds(5));ask.startInvestigation(helper,START.plusSeconds(6));
+        ask.requestInformation(helper,"Which UPI app was used?",START.plusSeconds(10));
+        check(ask.isAwaitingInformation(),"assigned technician can request information");
+        throwsException(InvalidTransitionException.class,()->ask.requestInformation(helper,"Another?",START.plusSeconds(11)),"one open question at a time");
+        throwsException(InvalidTransitionException.class,()->ask.resolve(helper,"Fixed the callback","cause",START.plusSeconds(20)),"cannot resolve while waiting for the reporter");
+        throwsException(UnauthorizedIncidentOperationException.class,()->ask.provideInformation(new Employee("Other","o2@example.test"),"x",START.plusSeconds(21)),"only the reporter can answer");
+        ask.provideInformation(EMP,"PhonePe",START.plusSeconds(30));
+        check(!ask.isAwaitingInformation() && ask.getAuditTrail().stream().anyMatch(e->e.action().equals("INFO_PROVIDED")),"reporter's answer clears the request");
+        Incident configured=incident(Impact.LOW,Urgency.LOW,false,false);
+        configured.classify(Priority.P4_LOW,new SLAPolicy(Priority.P4_LOW,Duration.ofMinutes(10),Duration.ofMinutes(60)),ADMIN,START);
+        check(configured.getSlaPolicy().responseTarget().equals(Duration.ofMinutes(10)),"configured SLA policy is used");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

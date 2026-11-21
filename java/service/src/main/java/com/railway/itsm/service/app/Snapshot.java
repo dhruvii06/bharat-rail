@@ -8,6 +8,9 @@ import com.irctc.itsm.repository.ServiceAndSlaRepository;
 import com.irctc.itsm.repository.UserRepository;
 import com.railway.itsm.domain.enums.IncidentCategory;
 import com.railway.itsm.domain.enums.IncidentStatus;
+import com.railway.itsm.domain.enums.Priority;
+import com.railway.itsm.domain.model.SLAPolicy;
+import java.time.Duration;
 import com.railway.itsm.domain.model.Administrator;
 import com.railway.itsm.domain.model.Employee;
 import com.railway.itsm.domain.model.Incident;
@@ -37,6 +40,7 @@ public final class Snapshot {
     private final List<com.irctc.itsm.model.Incident> incidents;
     private final Map<String, IntegrationQueries.Extras> extras;
     private final Map<String, Instant> resolvedAt;
+    private final Set<Long> inactive;
 
     Snapshot(UserRepository userRepo, ServiceAndSlaRepository serviceRepo, IncidentRepository incidentRepo, IntegrationQueries queries) {
         for (Role role : Role.values()) for (com.irctc.itsm.model.User u : userRepo.findByRole(role)) users.put(u.getUserId(), u);
@@ -46,7 +50,14 @@ public final class Snapshot {
         this.incidents = incidentRepo.findAll();
         this.extras = queries.extras();
         this.resolvedAt = queries.resolvedAt();
+        this.inactive = queries.inactiveUserIds();
     }
+
+    public boolean isActive(long userId) { return !inactive.contains(userId); }
+
+    public String infoRequest(String incidentId) { return Optional.ofNullable(extras.get(incidentId)).map(IntegrationQueries.Extras::infoRequest).orElse(null); }
+
+    public Instant infoRequestedAt(String incidentId) { return Optional.ofNullable(extras.get(incidentId)).map(IntegrationQueries.Extras::infoRequestedAt).orElse(null); }
 
     public List<com.irctc.itsm.model.Incident> incidents() { return incidents; }
 
@@ -91,7 +102,7 @@ public final class Snapshot {
         if (d == null) throw new IllegalStateException("User " + id + " has no technician profile");
         int active = Math.max(d.getCurrentWorkload(), minimumActive);
         return new Technician(Ids.user(id), u.getFullName(), u.getEmail(), Set.of(Mapping.skill(d.getSkillCategory())),
-                Math.max(TECHNICIAN_CAPACITY, active), active, d.isAvailable());
+                Math.max(TECHNICIAN_CAPACITY, active), active, d.isAvailable() && isActive(id));
     }
 
     public List<Technician> technicians() {
@@ -112,12 +123,22 @@ public final class Snapshot {
         boolean active = status == IncidentStatus.ASSIGNED || status == IncidentStatus.ACKNOWLEDGED || status == IncidentStatus.IN_PROGRESS;
         Technician assignee = dto.getAssignedTechnicianId() == null ? null : technician(dto.getAssignedTechnicianId(), active ? 1 : 0);
         IncidentCategory category = Mapping.category(dto.getCategory());
+        Priority priority = dto.getPriority() == null ? null : Mapping.priority(dto.getPriority());
         return Incident.restore(Ids.incident(dto.getIncidentId()), dto.getTitle(), dto.getDescription(),
                 employee(dto.getReporterId()), service(dto.getServiceId()), category,
                 Mapping.impact(dto.getImpact()), Mapping.urgency(dto.getUrgency()), affectedUsers(dto.getIncidentId()),
                 category == IncidentCategory.SECURITY, dto.isTatkalWindow(), Mapping.instant(dto.getCreatedAt()),
-                status, dto.getPriority() == null ? null : Mapping.priority(dto.getPriority()), assignee,
-                acknowledgedAt(dto.getIncidentId()), resolvedAt(dto.getIncidentId()), null);
+                status, priority, assignee, acknowledgedAt(dto.getIncidentId()), resolvedAt(dto.getIncidentId()), null,
+                storedSlaPolicy(dto, priority), infoRequest(dto.getIncidentId()), infoRequestedAt(dto.getIncidentId()));
+    }
+
+    /** The SLA targets this incident was created with, taken from its stored deadlines (null if unknown). */
+    private static SLAPolicy storedSlaPolicy(com.irctc.itsm.model.Incident dto, Priority priority) {
+        if (priority == null || dto.getCreatedAt() == null || dto.getSlaResponseDeadline() == null || dto.getSlaResolutionDeadline() == null) return null;
+        Duration response = Duration.between(dto.getCreatedAt(), dto.getSlaResponseDeadline());
+        Duration resolution = Duration.between(dto.getCreatedAt(), dto.getSlaResolutionDeadline());
+        return response.isNegative() || response.isZero() || resolution.isNegative() || resolution.isZero() ? null
+                : new SLAPolicy(priority, response, resolution);
     }
 
     private com.irctc.itsm.model.User require(long id) {

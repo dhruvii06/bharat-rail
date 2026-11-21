@@ -20,7 +20,7 @@ export function IncidentList({ user }: { user: User }) {
     ['Status', 'status', statuses.map(s => [s, humanize(s)])],
     ['Priority', 'priority', priorities.map(p => [p, p])],
     ['Service', 'serviceId', (services.data ?? []).map(s => [String(s.id), s.name])],
-    ['Category', 'category', (categories.data ?? []).map(c => [c, humanize(c)])],
+    ['Category', 'category', (categories.data ?? []).map(c => [c.code, c.label])],
     ['SLA', 'sla', slaStates.map(s => [s, slaLabel[s]])]
   ];
   if (user.role === 'Manager') selects.push(['Technician', 'technicianId', (technicians.data ?? []).map(t => [String(t.id), t.name])]);

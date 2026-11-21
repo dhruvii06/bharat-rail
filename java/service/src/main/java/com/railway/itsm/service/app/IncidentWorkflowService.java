@@ -22,6 +22,8 @@ import com.railway.itsm.domain.model.Employee;
 import com.railway.itsm.domain.model.Incident;
 import com.railway.itsm.domain.model.RailwayService;
 import com.railway.itsm.domain.model.SLAEvaluator;
+import com.railway.itsm.domain.model.SLAPolicy;
+import com.railway.itsm.domain.exceptions.SLAPolicyNotFoundException;
 import com.railway.itsm.domain.model.SLAResult;
 import com.railway.itsm.domain.model.Technician;
 import com.railway.itsm.domain.strategy.AssignmentStrategy;
@@ -112,8 +114,10 @@ public class IncidentWorkflowService {
         return catalogue.findAllServices().stream().map(this::serviceView).toList();
     }
 
-    public List<String> categories() {
-        return Arrays.stream(IncidentCategory.values()).map(Enum::name).toList();
+    /** Categories reporters can choose: the ones the IT manager has not switched off. */
+    public List<CategoryView> categories() {
+        return queries.categories().stream().filter(IntegrationQueries.CategoryRow::active)
+                .map(c -> new CategoryView(c.code(), c.label(), true)).toList();
     }
 
     public List<String> assignmentStrategies() { return assignmentStrategies.keySet().stream().sorted().toList(); }
@@ -168,6 +172,8 @@ public class IncidentWorkflowService {
         String description = text(in.description(), "description", 10, 4000);
         if (in.serviceId() == null) throw new IllegalArgumentException("Choose the affected service.");
         IncidentCategory category = Mapping.category(Objects.requireNonNullElse(in.category(), ""));
+        if (queries.categories().stream().noneMatch(c -> c.code().equals(category.name()) && c.active()))
+            throw new IllegalArgumentException("The category " + category.name() + " is not available. Choose another category.");
         int impact = range(in.impact(), "impact", 1, 3), urgency = range(in.urgency(), "urgency", 1, 3);
         int affected = in.affectedUsers() == null ? 0 : range(in.affectedUsers(), "affected passengers", 0, 100_000_000);
 
@@ -181,14 +187,16 @@ public class IncidentWorkflowService {
         Incident incident = new Incident(title, description, reporter, service, category, Impact.values()[impact - 1],
                 Urgency.values()[urgency - 1], affected, category == IncidentCategory.SECURITY, tatkal, now);
         Priority priority = priorityStrategy.calculate(incident);
-        incident.classify(priority, reporter, now);
+        com.irctc.itsm.model.Priority dbPriority = Mapping.priority(priority);
+        com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
+                .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
+        incident.classify(priority, new SLAPolicy(priority, Duration.ofMinutes(configured.getResponseTargetMins()),
+                Duration.ofMinutes(configured.getResolutionTargetMins())), reporter, now);
         List<SimilarView> duplicates = similarTo(s, incident);
 
         // Persistence: store the classified incident and its audit trail.
         String id = queries.nextIncidentId();
-        com.irctc.itsm.model.Priority dbPriority = Mapping.priority(priority);
-        Long slaId = catalogue.findSlaByPriority(dbPriority)
-                .orElseThrow(() -> new IllegalStateException("No SLA policy is configured for " + dbPriority + ".")).getSlaId();
+        Long slaId = configured.getSlaId();
         com.irctc.itsm.model.Incident dto = new com.irctc.itsm.model.Incident();
         dto.setIncidentId(id); dto.setReporterId(actor.userId()); dto.setServiceId(in.serviceId()); dto.setCategory(category.name());
         dto.setTitle(title); dto.setDescription(description); dto.setImpact(Mapping.level(impact)); dto.setUrgency(Mapping.level(urgency));
@@ -221,7 +229,7 @@ public class IncidentWorkflowService {
             technician = s.technician(technicianId, 0);
             how = "chosen by the manager";
         } else {
-            String key = strategyName == null || strategyName.isBlank() ? "skill" : strategyName.trim().toLowerCase(Locale.ROOT);
+            String key = strategyName == null || strategyName.isBlank() ? defaultStrategy() : strategyName.trim().toLowerCase(Locale.ROOT);
             AssignmentStrategy strategy = assignmentStrategies.get(key);
             if (strategy == null) throw new IllegalArgumentException("Unknown assignment strategy '" + strategyName + "'. Use one of " + assignmentStrategies() + ".");
             technician = strategy.select(incident, s.technicians());   // throws NoTechnicianAvailableException
@@ -277,6 +285,35 @@ public class IncidentWorkflowService {
             }
             default -> throw new IllegalArgumentException("Unknown action '" + action + "'. Use ACKNOWLEDGE, START, RESOLVE, VERIFY or CLOSE.");
         }
+        return detail(actor, id);
+    }
+
+    /** Technician step: ask the reporter for more information (the domain checks who and when). */
+    public synchronized IncidentView requestInformation(Actor actor, String id, String question) {
+        actor.require(Actor.TECHNICIAN, "request information");
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+        Incident incident = s.restore(dto);
+        String text = text(question, "question", 5, 1000);
+        Instant now = clock.instant();
+        incident.requestInformation(s.technician(actor.userId(), 0), text, now);
+        queries.setInfoRequest(id, text, now);
+        audit.save(new AuditLog(id, actor.userId(), "INFO_REQUESTED", dto.getStatus().name(), dto.getStatus().name(), text));
+        publish(id, "INFO_REQUESTED", s.userName(actor.userId()) + " needs more information on " + id + ": " + text);
+        return detail(actor, id);
+    }
+
+    /** Employee step: the reporter answers the technician's question. */
+    public synchronized IncidentView provideInformation(Actor actor, String id, String answer) {
+        actor.require(Actor.EMPLOYEE, "answer information requests");
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+        Incident incident = s.restore(dto);
+        String text = text(answer, "answer", 2, 2000);
+        incident.provideInformation(s.employee(actor.userId()), text, clock.instant());
+        queries.clearInfoRequest(id);
+        audit.save(new AuditLog(id, actor.userId(), "INFO_PROVIDED", dto.getStatus().name(), dto.getStatus().name(), text));
+        publish(id, "INFO_PROVIDED", "The reporter answered the question on " + id + ": " + text);
         return detail(actor, id);
     }
 
@@ -340,8 +377,116 @@ public class IncidentWorkflowService {
     }
 
     // =====================================================================================
+    // Administration (IT manager): catalogue, SLA policies, categories, settings, technicians
+    // =====================================================================================
+
+    public List<ServiceView> adminServices(Actor actor) {
+        actor.require(Actor.ADMIN, "manage services");
+        return services();
+    }
+
+    public synchronized ServiceView createService(Actor actor, String name, String category, String criticality) {
+        actor.require(Actor.ADMIN, "manage services");
+        ITService svc = catalogue.saveService(new ITService(null, serviceName(name),
+                Mapping.category(Objects.requireNonNullElse(category, "")).name(), severity(criticality)));
+        System.out.println("[ADMIN] user " + actor.userId() + " added service " + svc.getServiceName());
+        return serviceView(svc);
+    }
+
+    public synchronized ServiceView updateService(Actor actor, long serviceId, String name, String category, String criticality) {
+        actor.require(Actor.ADMIN, "manage services");
+        ITService current = catalogue.findServiceById(serviceId).orElseThrow(() -> new NotFoundException("Service " + serviceId + " was not found."));
+        String newName = name == null ? current.getServiceName() : serviceName(name);
+        String newCategory = category == null ? current.getCategory() : Mapping.category(category).name();
+        String newCriticality = criticality == null ? current.getBusinessCriticality().name() : severity(criticality).name();
+        queries.updateService(serviceId, newName, newCategory, newCriticality);
+        return serviceView(catalogue.findServiceById(serviceId).orElseThrow());
+    }
+
+    public List<SlaPolicyView> slaPolicies(Actor actor) {
+        actor.require(Actor.ADMIN, "manage SLA policies");
+        return catalogue.findAllSlaPolicies().stream()
+                .sorted(Comparator.comparing((com.irctc.itsm.model.SLAPolicy p) -> p.getPriority().name()))
+                .map(p -> new SlaPolicyView(p.getPriority().name(), p.getResponseTargetMins(), p.getResolutionTargetMins())).toList();
+    }
+
+    /** Applies to incidents reported from now on; existing incidents keep the deadlines they were given. */
+    public synchronized SlaPolicyView updateSlaPolicy(Actor actor, String priorityText, Integer responseMinutes, Integer resolutionMinutes) {
+        actor.require(Actor.ADMIN, "manage SLA policies");
+        com.irctc.itsm.model.Priority priority;
+        try { priority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
+        int response = range(responseMinutes, "response target (minutes)", 1, 10_080);
+        int resolution = range(resolutionMinutes, "resolution target (minutes)", 1, 43_200);
+        if (resolution <= response) throw new IllegalArgumentException("The resolution target must be longer than the response target.");
+        catalogue.saveOrUpdateSlaPolicy(new com.irctc.itsm.model.SLAPolicy(null, priority, response, resolution));
+        System.out.println("[ADMIN] user " + actor.userId() + " set " + priority + " SLA to " + response + "/" + resolution + " min");
+        return new SlaPolicyView(priority.name(), response, resolution);
+    }
+
+    public List<CategoryView> adminCategories(Actor actor) {
+        actor.require(Actor.ADMIN, "manage categories");
+        return queries.categories().stream().map(c -> new CategoryView(c.code(), c.label(), c.active())).toList();
+    }
+
+    public synchronized CategoryView updateCategory(Actor actor, String code, String label, Boolean active) {
+        actor.require(Actor.ADMIN, "manage categories");
+        String key = Mapping.category(Objects.requireNonNullElse(code, "")).name();
+        String newLabel = label == null ? null : text(label, "label", 2, 60);
+        if (Boolean.FALSE.equals(active) && queries.categories().stream().filter(IntegrationQueries.CategoryRow::active).count() <= 1)
+            throw new IllegalStateException("At least one category must stay available.");
+        if (!queries.updateCategory(key, newLabel, active)) throw new NotFoundException("Category " + key + " was not found.");
+        return queries.categories().stream().filter(c -> c.code().equals(key)).findFirst()
+                .map(c -> new CategoryView(c.code(), c.label(), c.active())).orElseThrow();
+    }
+
+    public SettingsView settings(Actor actor) {
+        actor.require(Actor.ADMIN, "manage settings");
+        return new SettingsView(defaultStrategy(), assignmentStrategies());
+    }
+
+    public synchronized SettingsView updateSettings(Actor actor, String defaultAssignmentStrategy) {
+        actor.require(Actor.ADMIN, "manage settings");
+        String key = Objects.requireNonNullElse(defaultAssignmentStrategy, "").trim().toLowerCase(Locale.ROOT);
+        if (!assignmentStrategies.containsKey(key)) throw new IllegalArgumentException("Choose one of " + assignmentStrategies() + ".");
+        queries.setSetting("default_assignment_strategy", key);
+        return settings(actor);
+    }
+
+    /** Creates or updates a technician's skill, experience and availability; current workload is kept. */
+    public synchronized TechnicianView saveTechnicianProfile(Actor actor, long userId, String skill, Integer experienceYears, Boolean available) {
+        actor.require(Actor.ADMIN, "manage technicians");
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.User user = s.user(userId).orElseThrow(() -> new NotFoundException("User " + userId + " was not found."));
+        if (user.getRole() != com.irctc.itsm.model.Role.TECHNICIAN) throw new IllegalArgumentException(user.getFullName() + " is not a technician.");
+        TechnicianDetail current = s.technicianDetails().get(userId);
+        String skillCode = skill == null && current != null ? current.getSkillCategory() : Mapping.category(Objects.requireNonNullElse(skill, "")).name();
+        Mapping.skill(skillCode);
+        int years = experienceYears == null ? (current == null ? 1 : current.getExperienceYears()) : range(experienceYears, "experience (years)", 0, 50);
+        boolean isAvailable = available == null ? current == null || current.isAvailable() : available;
+        users.saveTechnicianDetail(new TechnicianDetail(userId, skillCode, current == null ? 0 : current.getCurrentWorkload(), years, isAvailable));
+        return technicianViews(snapshot()).stream().filter(t -> t.id() == userId).findFirst().orElseThrow();
+    }
+
+    // =====================================================================================
     // Helpers
     // =====================================================================================
+
+    private String defaultStrategy() {
+        String value = queries.setting("default_assignment_strategy", "skill");
+        return assignmentStrategies.containsKey(value) ? value : "skill";
+    }
+
+    private static String serviceName(String name) {
+        String v = text(name, "service name", 3, 100).toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]+", "_").replaceAll("^_|_$", "");
+        if (v.length() < 3) throw new IllegalArgumentException("Enter a service name of 3-100 letters or digits.");
+        return v;
+    }
+
+    private static com.irctc.itsm.model.SeverityLevel severity(String text) {
+        try { return com.irctc.itsm.model.SeverityLevel.valueOf(Objects.requireNonNullElse(text, "").trim().toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Criticality must be CRITICAL, HIGH, MEDIUM or LOW."); }
+    }
 
     private void publish(String incidentId, String type, String message) {
         events.publish(new IncidentEvent(Ids.incident(incidentId), type, message, clock.instant()));
@@ -390,7 +535,7 @@ public class IncidentWorkflowService {
             history = audit.findByIncidentId(id).stream().map(a -> new HistoryView(Mapping.instant(a.getTimestamp()), a.getPerformedByUserId(),
                     a.getPerformedByUserId() == null ? "System" : s.userName(a.getPerformedByUserId()), a.getAction(),
                     a.getPreviousState(), a.getNewState(), a.getDescription())).toList();
-            actions = allowedActions(actor, dto, resolution);
+            actions = allowedActions(actor, dto, resolution, incident.isAwaitingInformation());
             similar = actor.isEmployee() ? List.of() : similarTo(s, incident);
         }
         return new IncidentView(id, dto.getTitle(), dto.getDescription(), dto.getCategory(), dto.getServiceId(),
@@ -400,10 +545,11 @@ public class IncidentWorkflowService {
                 incident.getPriority() == null ? null : PriorityExplainer.explain(incident, incident.getPriority()),
                 dto.getStatus().name(), dto.getReporterId(), s.userName(dto.getReporterId()), dto.getAssignedTechnicianId(),
                 s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
-                responseDue, resolutionDue, s.resolvedAt(id), sla, resolution, history, actions, similar);
+                responseDue, resolutionDue, s.resolvedAt(id), sla, incident.getInformationRequest(), incident.getInformationRequestedAt(),
+                resolution, history, actions, similar);
     }
 
-    private List<String> allowedActions(Actor actor, com.irctc.itsm.model.Incident dto, ResolutionView resolution) {
+    private List<String> allowedActions(Actor actor, com.irctc.itsm.model.Incident dto, ResolutionView resolution, boolean waiting) {
         String status = dto.getStatus().name();
         List<String> actions = new ArrayList<>();
         if (actor.isAdmin()) {
@@ -414,11 +560,13 @@ public class IncidentWorkflowService {
             switch (status) {
                 case "ASSIGNED" -> actions.add("ACKNOWLEDGE");
                 case "ACKNOWLEDGED" -> actions.add("START");
-                case "IN_PROGRESS" -> actions.add("RESOLVE");
+                case "IN_PROGRESS" -> { if (!waiting) actions.add("RESOLVE"); }
                 default -> { }
             }
+            if (!waiting && (status.equals("ACKNOWLEDGED") || status.equals("IN_PROGRESS"))) actions.add("REQUEST_INFO");
         }
         if (actor.isEmployee() && Objects.equals(dto.getReporterId(), actor.userId())) {
+            if (waiting) actions.add("PROVIDE_INFO");
             if (status.equals("RESOLVED")) actions.add("VERIFY");
             if (FINISHED.contains(status) && resolution != null && resolution.feedback() == null) actions.add("FEEDBACK");
         }
@@ -432,7 +580,7 @@ public class IncidentWorkflowService {
             TechnicianDetail d = e.getValue();
             com.irctc.itsm.model.User u = s.user(e.getKey()).orElseThrow();
             list.add(new TechnicianView(e.getKey(), u.getFullName(), u.getEmail(), d.getSkillCategory(), d.getCurrentWorkload(),
-                    Snapshot.TECHNICIAN_CAPACITY, d.getExperienceYears(), d.isAvailable()));
+                    Snapshot.TECHNICIAN_CAPACITY, d.getExperienceYears(), d.isAvailable() && s.isActive(e.getKey())));
         }
         return list;
     }
