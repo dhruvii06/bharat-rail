@@ -108,6 +108,24 @@ public final class DomainModelChecks {
         Incident configured=incident(Impact.LOW,Urgency.LOW,false,false);
         configured.classify(Priority.P4_LOW,new SLAPolicy(Priority.P4_LOW,Duration.ofMinutes(10),Duration.ofMinutes(60)),ADMIN,START);
         check(configured.getSlaPolicy().responseTarget().equals(Duration.ofMinutes(10)),"configured SLA policy is used");
+
+        var graph=com.railway.itsm.domain.impact.ServiceDependencyGraph.railwayExample();
+        var paymentImpact=graph.analyze("UPI_PAYMENT_GATEWAY");
+        check(paymentImpact.directCount()==4 && paymentImpact.indirectCount()>=1,
+            "payment outage cascades to direct and indirect dependents");
+        check(paymentImpact.affected().stream().anyMatch(a->a.id().equals("TATKAL_BOOKING_ENGINE") && a.depth()==1),
+            "Tatkal affected directly by payment outage");
+        check(paymentImpact.affected().stream().map(a->a.id()).distinct().count()==paymentImpact.affected().size(),
+            "dependency analysis never duplicates affected services");
+        check(graph.analyze("CATERING_ORDERS").affected().isEmpty(),
+            "leaf service outage has no predicted blast radius");
+        throwsException(IllegalArgumentException.class,()->graph.analyze("NOT_CONFIGURED"),
+            "unknown service cannot be simulated");
+        var cycleGraph=new com.railway.itsm.domain.impact.ServiceDependencyGraph(List.of(
+            new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("A","A","Ops",3,List.of("B")),
+            new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("B","B","Ops",2,List.of("A"))));
+        check(cycleGraph.analyze("A").affected().size()==1,
+            "cyclic dependency graph terminates safely");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

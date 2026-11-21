@@ -77,3 +77,36 @@ td .inline-input{display:inline-block;width:auto}
 .pill{display:inline-block;font-size:11px;padding:1px 7px;border:1px solid #c2d6c9;background:#edf4ef;color:#45694f;border-radius:2px}
 .pill.off{border-color:#e9b8b8;background:#fcecec;color:#992f31}
 .saved{color:#45694f;font-size:12px;margin-left:8px}
+
+/* ---- Training-only service impact simulator ---- */
+.impact-page {max-width:1450px}
+.impact-demo-pill{white-space:nowrap;padding:7px 11px;color:#8b4b24;border:1px solid #dfb78d;background:#fff3e6;font-size:10px;font-weight:600;letter-spacing:.5px}
+.impact-controls{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+.impact-controls label{min-width:0}
+.impact-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:24px}
+.impact-metrics section{margin:0;padding:17px;background:#fff;border:1px solid var(--line)}
+.impact-metrics section span{color:#647182;font-size:12px}
+.impact-metrics section strong{display:block;margin-top:10px;font-size:27px;font-weight:600;line-height:1.2}
+.impact-priority.P1{color:#a23737}.impact-priority.P2{color:#91511d}.impact-priority.P3{color:#786215}.impact-priority.P4{color:#45694f}
+.impact-card{border:1px solid var(--line);padding:20px;background:#fff;margin:0}
+.impact-card h2{margin-bottom:10px}
+.impact-graph{display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr) 24px minmax(0,1fr);align-items:start;gap:9px;margin-top:16px}
+.impact-graph-col{display:flex;flex-direction:column;gap:9px;min-width:0}
+.impact-graph-arrow{padding-top:82px;text-align:center;font-size:25px;font-weight:600;color:#8292a6}
+.impact-stage{font-size:10px;letter-spacing:.8px;font-weight:600;color:#637083;padding:0 2px 5px}
+.impact-node{display:flex;flex-direction:column;gap:5px;border:1px solid #d7dfe8;border-left:4px solid #8796a8;background:#f9fafc;padding:13px;min-width:0;min-height:88px}
+.impact-node strong{font-size:12px;color:#2b3f56;font-weight:600}
+.impact-node span{font-size:11px;color:#647182;overflow-wrap:anywhere}
+.impact-node em{font-size:10px;color:#8b5d32;font-style:normal}
+.impact-node.failed{border-color:#e7b1b1;border-left-color:#a23737;background:#fff4f4}
+.impact-node.failed em{color:#a23737}
+.impact-node.direct{border-left-color:#d58e4b;background:#fffaf4}
+.impact-node.indirect{border-left-color:#b0a65e;background:#fffdf3}
+.impact-node.clear{color:#647182;font-size:12px;background:#f7f9fb}
+.impact-bottom{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;margin-top:18px}
+.impact-paths{padding-left:22px;margin:14px 0 0}
+.impact-paths li{padding:9px 0;border-bottom:1px solid #edf0f4;font-size:12px}
+.impact-paths small{margin-top:3px}
+.impact-bottom .warning-box{line-height:1.6}
+@media(max-width:950px){.impact-bottom{grid-template-columns:1fr}.impact-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.impact-controls{grid-template-columns:1fr}.impact-graph{display:flex;flex-direction:column;gap:8px}.impact-graph-col{width:100%}.impact-graph-arrow{padding:0 0 0 10px;transform:rotate(90deg)}.impact-node{min-height:0}.impact-demo-pill{font-size:9px}}
