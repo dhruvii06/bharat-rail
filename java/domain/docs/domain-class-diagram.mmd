@@ -98,3 +98,24 @@ classDiagram
  IncidentManagementService --> IncidentRepository
  IncidentManagementService --> EventPublisher
  EventPublisher --> IncidentListener : notifies
+
+ class DomainException {
+   <<exception>>
+ }
+ class InvalidTransitionException
+ class NoTechnicianAvailableException
+ class TechnicianUnavailableException
+ class TechnicianWorkloadExceededException
+ class SLAPolicyNotFoundException
+ class UnauthorizedIncidentOperationException
+ DomainException <|-- InvalidTransitionException
+ DomainException <|-- NoTechnicianAvailableException
+ DomainException <|-- TechnicianUnavailableException
+ DomainException <|-- TechnicianWorkloadExceededException
+ DomainException <|-- SLAPolicyNotFoundException
+ DomainException <|-- UnauthorizedIncidentOperationException
+ Technician ..> TechnicianUnavailableException : throws
+ Technician ..> TechnicianWorkloadExceededException : throws
+ Incident ..> InvalidTransitionException : throws
+ Incident ..> UnauthorizedIncidentOperationException : throws
+ SLAPolicy ..> SLAPolicyNotFoundException : throws
