@@ -49,11 +49,14 @@ public final class DomainModelChecks {
         check(new SkillBasedAssignmentStrategy().select(inc,List.of(db,pay))==pay,"skill-based chooses eligible");
         inc.assign(pay,ADMIN,START.plusSeconds(2));
         check(pay.getActiveIncidents()==1,"assignment increases workload");
-        throwsException(IllegalStateException.class,()->pay.takeIncident(),"capacity enforcement");
+        throwsException(TechnicianWorkloadExceededException.class,()->pay.takeIncident(),"capacity enforcement with typed exception");
+        pay.setAvailable(false);
+        throwsException(TechnicianUnavailableException.class,()->pay.takeIncident(),"unavailable technician typed exception");
+        pay.setAvailable(true);
         Technician another=new Technician("Another","another@example.test",Set.of(Skill.PAYMENTS),3);
         check(new LoadBasedAssignmentStrategy().select(inc,List.of(pay,another))==another,"least loaded technician");
         check(SLAEvaluator.evaluate(inc,START.plusSeconds(301)).responseViolated(),"unacknowledged past SLA");
-        throwsException(SecurityException.class,()->inc.acknowledge(another,START.plusSeconds(3)),"only assigned tech can acknowledge");
+        throwsException(UnauthorizedIncidentOperationException.class,()->inc.acknowledge(another,START.plusSeconds(3)),"only assigned tech can acknowledge");
         inc.acknowledge(pay,START.plusSeconds(60));
         check(!SLAEvaluator.evaluate(inc,START.plusSeconds(500)).responseViolated(),"acknowledged on time remains compliant");
         check(SLAEvaluator.evaluate(inc,START.plusSeconds(1700)).resolutionAtRisk(),"resolution risk warning");
@@ -62,7 +65,7 @@ public final class DomainModelChecks {
         inc.resolve(pay,"Restored callback","Timeout",START.plusSeconds(600));
         check(pay.getActiveIncidents()==0,"resolution frees workload");
         check(inc.getResolution()!=null,"resolution stored");
-        throwsException(SecurityException.class,()->inc.verify(new Employee("Other","other@example.test"),START.plusSeconds(700)),"only reporter can verify");
+        throwsException(UnauthorizedIncidentOperationException.class,()->inc.verify(new Employee("Other","other@example.test"),START.plusSeconds(700)),"only reporter can verify");
         inc.verify(EMP,START.plusSeconds(700));inc.close(ADMIN,START.plusSeconds(800));
         check(inc.getStatus()==IncidentStatus.CLOSED,"full lifecycle closes");
         check(inc.getAuditTrail().size()==8,"audit records all eight transitions/events");
@@ -78,6 +81,11 @@ public final class DomainModelChecks {
         check(svc.findPotentialDuplicates(similar).size()==1,"duplicate candidate detection");
         check(inc.getAuditTrail().stream().allMatch(e->e.actorId()!=null),"audit attributes actor");
         throwsException(IllegalArgumentException.class,()->new RailwayService("Bad",4),"invalid criticality rejected");
+        throwsException(SLAPolicyNotFoundException.class,()->SLAPolicy.forPriority(null),"missing SLA policy rejected");
+        check(priority.calculate(incident(Impact.HIGH,Urgency.HIGH,false,false))==Priority.P1_CRITICAL,"score 27 P1 without override");
+        check(priority.calculate(incident(Impact.MEDIUM,Urgency.MEDIUM,false,false))==Priority.P2_HIGH,"score 12 P2");
+        check(priority.calculate(incident(Impact.MEDIUM,Urgency.LOW,false,false))==Priority.P3_MEDIUM,"score 6 P3");
+        check(priority.calculate(incident(Impact.LOW,Urgency.LOW,false,true))==Priority.P4_LOW,"Tatkal without maximum impact and urgency does not override");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }
