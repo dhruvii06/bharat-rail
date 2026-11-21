@@ -72,6 +72,8 @@ export const api = {
     try { await request('POST', '/auth/logout'); } finally { token = null; writeToken(null); }
   },
   me: async () => (await request<{ user: User }>('GET', '/auth/me')).user,
+  register: async (name: string, email: string, password: string) =>
+    (await request<{ user: User }>('POST', '/auth/register', { name, email, password })).user,
 
   incidents: (filters: IncidentFilters = {}) => request<Incident[]>('GET', `/incidents${query({ ...filters })}`),
   incident: (id: string) => request<Incident>('GET', `/incidents/${encodeURIComponent(id)}`),

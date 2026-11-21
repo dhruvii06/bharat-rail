@@ -17,8 +17,20 @@ public class PostgresIncidentRepository implements IncidentRepository {
             created_at, sla_response_deadline, sla_resolution_deadline, sla_violated)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (incident_id) DO UPDATE SET
-            status = EXCLUDED.status, priority = EXCLUDED.priority,
-            assigned_technician_id = EXCLUDED.assigned_technician_id, sla_violated = EXCLUDED.sla_violated
+            service_id = EXCLUDED.service_id,
+            category = EXCLUDED.category,
+            title = EXCLUDED.title,
+            description = EXCLUDED.description,
+            impact = EXCLUDED.impact,
+            urgency = EXCLUDED.urgency,
+            priority = EXCLUDED.priority,
+            tatkal_window = EXCLUDED.tatkal_window,
+            status = EXCLUDED.status,
+            assigned_technician_id = EXCLUDED.assigned_technician_id,
+            sla_id = EXCLUDED.sla_id,
+            sla_response_deadline = EXCLUDED.sla_response_deadline,
+            sla_resolution_deadline = EXCLUDED.sla_resolution_deadline,
+            sla_violated = EXCLUDED.sla_violated
             """;
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -103,29 +115,40 @@ public class PostgresIncidentRepository implements IncidentRepository {
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
             try {
-                String oldStatus;
+                IncidentStatus currentStatus;
                 try (PreparedStatement psSelect = conn.prepareStatement(selectSql)) {
                     psSelect.setString(1, incidentId);
                     ResultSet rs = psSelect.executeQuery();
-                    if (!rs.next()) { conn.rollback(); return false; }
-                    oldStatus = rs.getString("status");
+                    if (!rs.next()) {
+                        conn.rollback();
+                        return false;
+                    }
+                    currentStatus = IncidentStatus.valueOf(rs.getString("status"));
                 }
+
+                if (!isValidTransition(currentStatus, newStatus)) {
+                    conn.rollback();
+                    throw new IllegalStateException("Invalid status transition from " + currentStatus + " to " + newStatus);
+                }
+
                 try (PreparedStatement psUpdate = conn.prepareStatement(updateSql)) {
                     psUpdate.setString(1, newStatus.name());
                     psUpdate.setString(2, incidentId);
                     psUpdate.executeUpdate();
                 }
+
                 try (PreparedStatement psAudit = conn.prepareStatement(auditSql)) {
                     psAudit.setString(1, incidentId);
                     psAudit.setObject(2, modifiedByUserId, Types.BIGINT);
-                    psAudit.setString(3, oldStatus);
+                    psAudit.setString(3, currentStatus.name());
                     psAudit.setString(4, newStatus.name());
-                    psAudit.setString(5, "Status transitioned from " + oldStatus + " to " + newStatus.name());
+                    psAudit.setString(5, "Status transitioned from " + currentStatus.name() + " to " + newStatus.name());
                     psAudit.executeUpdate();
                 }
+
                 conn.commit();
                 return true;
-            } catch (SQLException e) {
+            } catch (SQLException | RuntimeException e) {
                 conn.rollback();
                 throw e;
             }
@@ -136,26 +159,43 @@ public class PostgresIncidentRepository implements IncidentRepository {
 
     @Override
     public boolean assignTechnician(String incidentId, Long technicianId, Long modifiedByUserId) {
+        String selectSql = "SELECT status FROM incidents WHERE incident_id = ? FOR UPDATE";
         String updateSql = "UPDATE incidents SET assigned_technician_id = ?, status = 'ASSIGNED' WHERE incident_id = ?";
         String workloadSql = "UPDATE technician_details SET current_workload = current_workload + 1 WHERE technician_id = ?";
-        String auditSql = "INSERT INTO audit_logs (incident_id, performed_by, action, previous_state, new_state, description) VALUES (?, ?, 'TECHNICIAN_ASSIGNED', 'CLASSIFIED', 'ASSIGNED', ?)";
+        String auditSql = "INSERT INTO audit_logs (incident_id, performed_by, action, previous_state, new_state, description) VALUES (?, ?, 'TECHNICIAN_ASSIGNED', ?, 'ASSIGNED', ?)";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
-            try (PreparedStatement ps1 = conn.prepareStatement(updateSql);
-                 PreparedStatement ps2 = conn.prepareStatement(workloadSql);
-                 PreparedStatement ps3 = conn.prepareStatement(auditSql)) {
-                ps1.setLong(1, technicianId);
-                ps1.setString(2, incidentId);
-                if (ps1.executeUpdate() == 0) { conn.rollback(); return false; }
+            try {
+                String oldStatus;
+                try (PreparedStatement psSelect = conn.prepareStatement(selectSql)) {
+                    psSelect.setString(1, incidentId);
+                    ResultSet rs = psSelect.executeQuery();
+                    if (!rs.next()) {
+                        conn.rollback();
+                        return false;
+                    }
+                    oldStatus = rs.getString("status");
+                }
 
-                ps2.setLong(1, technicianId);
-                ps2.executeUpdate();
+                try (PreparedStatement ps1 = conn.prepareStatement(updateSql)) {
+                    ps1.setLong(1, technicianId);
+                    ps1.setString(2, incidentId);
+                    ps1.executeUpdate();
+                }
 
-                ps3.setString(1, incidentId);
-                ps3.setObject(2, modifiedByUserId, Types.BIGINT);
-                ps3.setString(3, "Assigned to Technician ID: " + technicianId);
-                ps3.executeUpdate();
+                try (PreparedStatement ps2 = conn.prepareStatement(workloadSql)) {
+                    ps2.setLong(1, technicianId);
+                    ps2.executeUpdate();
+                }
+
+                try (PreparedStatement ps3 = conn.prepareStatement(auditSql)) {
+                    ps3.setString(1, incidentId);
+                    ps3.setObject(2, modifiedByUserId, Types.BIGINT);
+                    ps3.setString(3, oldStatus);
+                    ps3.setString(4, "Assigned to Technician ID: " + technicianId);
+                    ps3.executeUpdate();
+                }
 
                 conn.commit();
                 return true;
@@ -166,6 +206,19 @@ public class PostgresIncidentRepository implements IncidentRepository {
         } catch (SQLException e) {
             throw new DatabaseException("Transaction failed during technician assignment", e);
         }
+    }
+
+    private boolean isValidTransition(IncidentStatus current, IncidentStatus next) {
+        return switch (current) {
+            case NEW -> next == IncidentStatus.CLASSIFIED;
+            case CLASSIFIED -> next == IncidentStatus.ASSIGNED;
+            case ASSIGNED -> next == IncidentStatus.ACKNOWLEDGED;
+            case ACKNOWLEDGED -> next == IncidentStatus.IN_PROGRESS;
+            case IN_PROGRESS -> next == IncidentStatus.RESOLVED;
+            case RESOLVED -> next == IncidentStatus.VERIFIED || next == IncidentStatus.IN_PROGRESS;
+            case VERIFIED -> next == IncidentStatus.CLOSED;
+            case CLOSED -> false;
+        };
     }
 
     private List<Incident> queryList(String sql, String param) {
@@ -181,7 +234,7 @@ public class PostgresIncidentRepository implements IncidentRepository {
         }
     }
 
-   private Incident mapRow(ResultSet rs) throws SQLException {
+    private Incident mapRow(ResultSet rs) throws SQLException {
         Incident inc = new Incident();
         inc.setIncidentId(rs.getString("incident_id"));
         inc.setReporterId(getNullableLong(rs, "reporter_id"));

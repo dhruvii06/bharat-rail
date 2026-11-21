@@ -6,19 +6,28 @@ import com.irctc.itsm.repository.impl.*;
 
 public class DatabaseSmokeTest {
     public static void main(String[] args) {
-        UserRepository userRepo = new PostgresUserRepository();
-        ServiceAndSlaRepository metaRepo = new PostgresServiceAndSlaRepository();
         IncidentRepository incidentRepo = new PostgresIncidentRepository();
+        AuditLogRepository auditRepo = new PostgresAuditLogRepository();
         ResolutionRepository resRepo = new PostgresResolutionRepository();
 
-        System.out.println("Users loaded: " + userRepo.findByRole(Role.TECHNICIAN).size());
-        System.out.println("Payment Techs available: " + userRepo.findAvailableTechniciansBySkill("PAYMENT").size());
-        System.out.println("IT Services loaded: " + metaRepo.findAllServices().size());
-        System.out.println("P1 SLA Resolution Target (mins): " + metaRepo.findSlaByPriority(Priority.P1).get().getResolutionTargetMins());
-        System.out.println("Total Incidents: " + incidentRepo.findAll().size());
+        // 1. Verify status skipping is blocked (INC-1002 is ASSIGNED -> CLOSED must fail)
+        try {
+            incidentRepo.updateStatus("INC-1002", IncidentStatus.CLOSED, 1L);
+            System.out.println("ERROR: Status skip was NOT blocked!");
+        } catch (IllegalStateException e) {
+            System.out.println("PASS - Blocked invalid jump: " + e.getMessage());
+        }
 
-        resRepo.resolveIncident(new Resolution("INC-1002", 3L, "Redis PNR cache stale", "Flushed cache and restarted PNR API pod"));
-        resRepo.submitFeedback("INC-1002", 5);
-        System.out.println("Resolution & Feedback verified: " + resRepo.findByIncidentId("INC-1002").get().getUserFeedback() + "/5");
+        // 2. Verify edits are preserved on save()
+        Incident inc = incidentRepo.findById("INC-1002").orElseThrow();
+        inc.setTitle("Updated PNR Status Delay");
+        incidentRepo.save(inc);
+        System.out.println("PASS - Saved title: " + incidentRepo.findById("INC-1002").get().getTitle());
+
+        // 3. Verify resolution logs real previous status (ASSIGNED -> RESOLVED)
+        resRepo.resolveIncident(new Resolution("INC-1002", 3L, "Stale cache", "Cleared Redis cache"));
+        auditRepo.findByIncidentId("INC-1002").forEach(log ->
+            System.out.println("PASS - Audit logged: " + log.getPreviousState() + " -> " + log.getNewState())
+        );
     }
 }

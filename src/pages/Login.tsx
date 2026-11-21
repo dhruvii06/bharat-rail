@@ -1,41 +1,69 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth';
+import { api } from '../data/api';
+
+// Sign-in and employee self-registration (design by Dhruvi). Technician and manager accounts are
+// created by the IT administrator; registration always creates an Employee.
 
 const demoAccounts = [
-  ['priya.emp@demo.local', 'Employee · Customer Support'],
-  ['ananya.tech@demo.local', 'Technician · Payments'],
-  ['vikram.tech@demo.local', 'Technician · Database'],
+  ['support1@demo.local', 'Employee · Customer Support'],
+  ['ops@demo.local', 'Employee · Station Operations'],
+  ['tech.payment@demo.local', 'Technician · Payments'],
+  ['tech.database@demo.local', 'Technician · Database'],
   ['app.tech@demo.local', 'Technician · Application'],
-  ['rajesh.admin@demo.local', 'IT Manager']
+  ['admin1@demo.local', 'IT Manager']
 ];
 
 export function Login() {
   const { signIn } = useAuth();
+  const [register, setRegister] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setError('');
-    try { await signIn(email, password); } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+    e.preventDefault(); setBusy(true); setError(''); setNotice('');
+    try {
+      if (register) {
+        await api.register(name, email, password);
+        setRegister(false); setPassword('');
+        setNotice('Account created. Sign in with your new employee account.');
+      } else {
+        await signIn(email, password);
+      }
+    } catch (err) {
+      const e2 = err as Error & { fieldErrors?: Record<string, string> };
+      setError(e2.fieldErrors ? Object.entries(e2.fieldErrors).map(([f, m]) => `${f}: ${m}`).join(' ') : e2.message);
+    } finally { setBusy(false); }
   }
 
-  return <div className="login-page">
-    <div className="login-card">
-      <div className="eyebrow">BHARAT RAIL · IT SERVICE MANAGEMENT</div>
-      <h1>Sign in to the Incident Desk</h1>
+  function toggle() { setRegister(r => !r); setError(''); setNotice(''); setPassword(''); }
+
+  return <div className="auth-shell">
+    <div className="auth-brand">BR <span>Bharat Rail</span></div>
+    <div className="auth-panel">
+      <div className="eyebrow">IT SERVICE MANAGEMENT</div>
+      <h1>{register ? 'Create employee account' : 'Sign in'}</h1>
+      <p className="muted">{register ? 'Technician and administrator accounts are assigned by your IT administrator.' : 'Use your Bharat Rail service account to continue.'}</p>
       <form onSubmit={submit}>
         {error && <p role="alert" className="error">{error}</p>}
-        <label>Work email<input id="email" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label>Password<input id="password" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} /></label>
-        <button disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        {notice && <p role="status" className="notice-box">{notice}</p>}
+        {register && <label>Full name<input id="name" required minLength={2} maxLength={80} autoComplete="name" value={name} onChange={e => setName(e.target.value)} /></label>}
+        <label>Email address<input id="email" type="email" required maxLength={254} autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} /></label>
+        <label>Password<input id="password" type="password" required maxLength={128} autoComplete={register ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>
+        {register && <small>Use at least 8 characters, including letters and a number.</small>}
+        <button disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}</button>
       </form>
-      <details className="demo-accounts">
+      <button type="button" className="text-button" disabled={busy} onClick={toggle}>{register ? 'Back to sign in' : 'Create an employee account'}</button>
+      {!register && <details className="demo-accounts">
         <summary>Demo accounts</summary>
         <p className="muted">All demo accounts share the development password set in <code>backend/seed/demoUsers.ts</code> (or <code>DEMO_PASSWORD</code>).</p>
         <ul>{demoAccounts.map(([mail, role]) => <li key={mail}><button type="button" className="link-button" onClick={() => setEmail(mail)}>{mail}</button><span>{role}</span></li>)}</ul>
-      </details>
+      </details>}
     </div>
+    <p className="auth-footer">Bharat Rail · Service Operations</p>
   </div>;
 }

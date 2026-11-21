@@ -46,8 +46,8 @@ On first start in development the API gives every seeded account the demo passwo
 
 ## Demo workflows
 
-1. **Report and prioritise.** Sign in as `priya.emp@demo.local` and report a Tatkal booking or UPI payment failure with high impact and urgency. It is classified P1 with the reason shown, similar open incidents are flagged, and the manager gets in-app and email notifications.
-2. **Assign, investigate, resolve, close.** As `rajesh.admin@demo.local`, assign with the skill- or load-based strategy. As the assigned technician, acknowledge, start, add notes and resolve with a root cause. As the employee, confirm the fix and rate it. As the manager, close it. The history shows every step with its before and after state.
+1. **Report and prioritise.** Sign in as `support1@demo.local` and report a Tatkal booking or UPI payment failure with high impact and urgency. It is classified P1 with the reason shown, similar open incidents are flagged, and the manager gets in-app and email notifications.
+2. **Assign, investigate, resolve, close.** As `admin1@demo.local`, assign with the skill- or load-based strategy. As the assigned technician, acknowledge, start, add notes and resolve with a root cause. As the employee, confirm the fix and rate it. As the manager, close it. The history shows every step with its before and after state.
 3. **SLA monitoring and escalation.** Leave a P1/P2 unacknowledged: the SLA monitor records the violation and escalates to the IT manager (see Notifications and Management → Email outbox).
 
 ## Checks
