@@ -4,7 +4,7 @@ import com.railway.itsm.domain.exceptions.InvalidTransitionException;
 import java.time.Instant;
 import java.util.*;
 public final class Incident {
-    private final UUID id=UUID.randomUUID();
+    private final UUID id;
     private final String title;
     private final String description;
     private final Employee reporter;
@@ -27,14 +27,43 @@ public final class Incident {
     public Incident(String title,String description,Employee reporter,RailwayService affectedService,
                     IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                     boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
+        this(UUID.randomUUID(),title,description,reporter,affectedService,category,impact,urgency,
+             affectedUsers,criticalSecurityIncident,peakTatkalIncident,createdAt);
+        record(reporter,"CREATED",IncidentStatus.NEW,IncidentStatus.NEW,"Incident submitted",createdAt);
+    }
+    private Incident(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+                    IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
+                    boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
         if(title==null||title.isBlank()||description==null||description.isBlank()||affectedUsers<0)
             throw new IllegalArgumentException("Incident requires title/description and nonnegative affected users");
+        this.id=Objects.requireNonNull(id);
         this.title=title;this.description=description;this.reporter=Objects.requireNonNull(reporter);
         this.affectedService=Objects.requireNonNull(affectedService);this.category=Objects.requireNonNull(category);
         this.impact=Objects.requireNonNull(impact);this.urgency=Objects.requireNonNull(urgency);
         this.affectedUsers=affectedUsers;this.criticalSecurityIncident=criticalSecurityIncident;
         this.peakTatkalIncident=peakTatkalIncident;this.createdAt=Objects.requireNonNull(createdAt);
-        record(reporter,"CREATED",IncidentStatus.NEW,IncidentStatus.NEW,"Incident submitted",createdAt);
+    }
+    /**
+     * Rebuilds an incident that was saved earlier, in its saved state, so the lifecycle rules
+     * can validate the next action. Used by the persistence adapter; records no new audit entry.
+     */
+    public static Incident restore(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+                                   IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
+                                   boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt,
+                                   IncidentStatus status,Priority priority,Technician assignedTechnician,
+                                   Instant acknowledgedAt,Instant resolvedAt,Resolution resolution){
+        Incident incident=new Incident(id,title,description,reporter,affectedService,category,impact,urgency,
+                                       affectedUsers,criticalSecurityIncident,peakTatkalIncident,createdAt);
+        incident.status=Objects.requireNonNull(status);
+        if(status!=IncidentStatus.NEW && priority==null)
+            throw new IllegalArgumentException("A classified incident needs a priority");
+        incident.priority=priority;
+        incident.slaPolicy=priority==null?null:SLAPolicy.forPriority(priority);
+        if(status.compareTo(IncidentStatus.ASSIGNED)>=0 && assignedTechnician==null)
+            throw new IllegalArgumentException("An assigned incident needs a technician");
+        incident.assignedTechnician=assignedTechnician;
+        incident.acknowledgedAt=acknowledgedAt;incident.resolvedAt=resolvedAt;incident.resolution=resolution;
+        return incident;
     }
     public void classify(Priority priority,User actor,Instant now){
         require(IncidentStatus.NEW);

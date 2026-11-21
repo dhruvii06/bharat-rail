@@ -1,69 +1,78 @@
 # oop-irctc
 
-Intelligent IT Service Management & Incident Resolution System, adapted to an IRCTC incident scenario for the CS F213 / MAC F212 OOP course. Independent student prototype; no live IRCTC integration.
+Intelligent IT Service Management & Incident Resolution System (I-ITSM) for the CS F213 / MAC F212 OOP course, set in a fictional railway operator, **Bharat Rail**, modelled on IRCTC-style ticketing incidents. Student project; no live IRCTC integration.
 
-## Start
+## How the parts connect
 
-Use Node.js 22.16+ and npm.
-
-```sh
-npm ci
-npm run dev
+```text
+React UI (src/)  →  Node API (backend/)  →  Java incident service (java/service)  →  PostgreSQL
+  login, screens      login, sessions,        domain rules (java/domain) +          (java/persistence
+                      role checks             JDBC repositories (java/persistence)   schema + seed)
 ```
 
-Open the local URL printed by Vite. `npm run build` checks TypeScript and creates `dist/`; `npm test` runs domain and API tests. `npm run api` starts the backend on port 3001 (login and registration work; incident endpoints return 501 until Phase 2). With both running, Vite forwards `/api` to the backend. See [API](docs/API.md) for demo accounts.
+- **React UI**: one screen set per role (Employee, Technician, IT Manager). Talks only to the Node API.
+- **Node API**: login, sessions, password hashing, role checks. Forwards incident requests to the Java service with the signed-in user's id and role.
+- **Java incident service**: rebuilds the domain objects (java/domain) from the database rows (java/persistence), lets the domain decide whether each action is allowed (lifecycle, ownership, capacity), saves through the transactional repositories, and publishes events. Two observers deliver them: in-app notifications and a simulated email outbox. A background SLA monitor warns, records violations and escalates.
+- **PostgreSQL**: one database shared by Node (users) and Java (everything else).
 
-## Demonstrate the basic flow
+## Run it
 
-1. Employee: report an Application incident for Payments with factors 3/3/3. Inspect calculated P1 and deadlines.
-2. Manager: open it and move to ASSIGNED. Default assignment selects a matching available technician.
-3. Technician: acknowledge, start investigation, enter resolution details and resolve.
-4. Employee: inspect the resolution and verify it.
-5. Manager: close it and review its complete demo transition history.
+You need Node.js 22.16+, JDK 21 + Maven, and PostgreSQL (Docker or a local install).
 
-The preloaded Application incident supports the same walkthrough. Database, Network and Security incidents assign to `tech-infra`, which is not the selectable technician in this initial demo.
+1. **Settings.** Copy `.env.example` to `.env` and set `ITSM_DB_PASSWORD`.
+2. **Database**, either:
+   - Docker: `docker compose -f java/persistence/docker-compose.yml up -d` (creates the database and loads everything on first start), or
+   - Local PostgreSQL: create the user and database once, then load the tables:
+     ```sql
+     CREATE ROLE itsm_user LOGIN PASSWORD 'your-password';
+     CREATE DATABASE irctc_itsm OWNER itsm_user;
+     ```
+     ```sh
+     npm run db:setup
+     ```
+3. **Install and build**:
+   ```sh
+   npm ci
+   npm run service:build
+   ```
+4. **Start the three processes**, each in its own terminal:
+   ```sh
+   npm run service    # Java incident service on 127.0.0.1:8081
+   npm run api        # Node API on 127.0.0.1:3001
+   npm run dev        # React UI; open the URL Vite prints
+   ```
+
+On first start in development the API gives every seeded account the demo password from `backend/seed/demoUsers.ts` (or `DEMO_PASSWORD`). The login page lists the demo accounts.
+
+## Demo workflows
+
+1. **Report and prioritise.** Sign in as `priya.emp@demo.local` and report a Tatkal booking or UPI payment failure with high impact and urgency. It is classified P1 with the reason shown, similar open incidents are flagged, and the manager gets in-app and email notifications.
+2. **Assign, investigate, resolve, close.** As `rajesh.admin@demo.local`, assign with the skill- or load-based strategy. As the assigned technician, acknowledge, start, add notes and resolve with a root cause. As the employee, confirm the fix and rate it. As the manager, close it. The history shows every step with its before and after state.
+3. **SLA monitoring and escalation.** Leave a P1/P2 unacknowledged: the SLA monitor records the violation and escalates to the IT manager (see Notifications and Management → Email outbox).
+
+## Checks
+
+```sh
+npm test                        # Node tests: priority preview, auth, role checks, forwarding
+npm run build                   # TypeScript check + production build
+mvn -B -f java/pom.xml verify   # builds domain, persistence and service
+mvn -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.itsm.DomainModelChecks -Dexec.classpathScope=test   # 32 domain checks
+```
 
 ## Project layout
 
 ```text
-src/
-  App.tsx               Routes and basic page structure
-  styles.css            Replaceable wireframe styling
-  data/api.ts           API interface, mock adapter, assignment strategies
-shared/domain.ts        Incident contracts, priority policy and transitions
-backend/
-  server.ts             Composition root: picks repositories, seeds demo users, starts Express
-  app.ts                Express app: security headers, JSON parsing, routes, error handling
-  errors.ts             AppError hierarchy mapped to HTTP status codes
-  auth/                 Password hashing, sessions, login lockout, role guards
-  repositories/         Repository interfaces and in-memory versions
-  routes/               Auth routes and role-guarded planned endpoints
-docs/                   Architecture, API proposal and delivery checklist
-tests/                  Business-rule tests
-.github/workflows/      Automated tests and production build
+src/                    React UI: pages/, components/, auth.tsx (session), data/api.ts (HTTP client)
+shared/domain.ts        JSON contract shared by UI and API; priority preview
+backend/                Node API: auth/, routes/ (incidents forwarded, planned 501s), http/incidentService.ts, db/
+java/domain/            Domain model and rules: Incident lifecycle, strategies, events
+java/persistence/       PostgreSQL schema, seed, integration migration, JDBC repositories
+java/service/           Incident service: adapters between domain and persistence, HTTP API, notifications, SLA monitor
+scripts/                db:setup and service launcher
+docs/                   Architecture, API reference, roadmap
+tests/                  Node tests
 ```
 
-Frontend uses React, TypeScript, React Router and Vite. Business rules and the data adapter are separate from rendering so the UI can change next. The backend is Node.js with Express 5 and TypeScript, run through Node's built-in type stripping. Storage is in memory for now; SQLite is planned behind the repository interfaces.
+## Boundaries
 
-## Prototype boundaries
-
-Browser localStorage is the demo persistence layer. The role selector is a presentation aid, not authentication or security. Data is specific to this browser and origin. Clearing site storage resets the demo; do not enter real passenger or operational data. No passwords are collected. No notifications are actually sent.
-
-The environment example reserves an API URL; changing it alone does not enable API mode. Implement an HTTP adapter for `IncidentApi` and replace its exported instance when the agreed endpoints exist.
-
-This is an initial frontend foundation, not the completed course MVP. See [architecture](docs/ARCHITECTURE.md), [API proposal](docs/API.md) and [remaining requirements](docs/ROADMAP.md). The final visual design is intentionally pending.
-
-## GitHub setup
-
-Create a private empty GitHub repository named `oop-irctc`, then use the repo URL GitHub provides:
-
-```sh
-git remote add origin https://github.com/YOUR_USERNAME/oop-irctc.git
-git push -u origin main
-```
-
-Only do this after making the initial commit if using an uncommitted copy. The supplied local repository already has an initial commit when setup succeeds. Do not upload node_modules, .env or dist.
-
-## Java team contributions
-
-The two ZIP submissions are now source modules under [java/](java/README.md): domain OOP and PostgreSQL persistence. See that guide for Java 21 build, database setup, validation and the remaining API/model adapter boundary. These modules are not yet connected to the Express web API.
+Demo data only; do not enter real passenger or operational data. Email is simulated (stored in an outbox and printed by the service). Admin editing of users, services, categories and SLA policies is not built yet (those endpoints return 501). The API keeps sessions in memory, so restarting it signs everyone out.

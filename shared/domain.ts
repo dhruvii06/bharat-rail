@@ -1,39 +1,83 @@
+// Shared contract between the React frontend and the API. The Java incident service
+// (java/service, Views.java) is the source of truth for incidents; these types mirror its JSON.
+
 export type Role = 'Employee' | 'Technician' | 'Manager';
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
-export type Status = 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
-export const statuses: Status[] = ['CLASSIFIED', 'ASSIGNED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED', 'CLOSED'];
-export const services = ['Ticket booking', 'Tatkal booking', 'Payments', 'PNR', 'Authentication', 'Refunds', 'Notifications', 'E-catering', 'Website'] as const;
-export const categories = ['Application', 'Database', 'Network', 'Security', 'Authentication', 'Software'] as const;
+export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
+export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE';
+
+export const statuses: Status[] = ['NEW', 'CLASSIFIED', 'ASSIGNED', 'ACKNOWLEDGED', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED', 'CLOSED'];
+export const priorities: Priority[] = ['P1', 'P2', 'P3', 'P4'];
+export const slaStates: SlaState[] = ['WITHIN', 'AT_RISK', 'BREACHED', 'MET'];
+export const slaLabel: Record<SlaState, string> = { WITHIN: 'Within target', AT_RISK: 'At risk', BREACHED: 'Breached', MET: 'Met', NONE: '—' };
+export const finished: Status[] = ['RESOLVED', 'VERIFIED', 'CLOSED'];
+
+export interface User { id: string; name: string; email: string; role: Role; isTeamLead: boolean }
+
 export interface IncidentInput {
-  title: string; description: string; service: string; category: string;
-  impact: number; urgency: number; criticality: number;
+  title: string; description: string; serviceId: number; category: string;
+  impact: number; urgency: number; affectedUsers: number; tatkalWindow: boolean;
 }
-export interface AuditEvent { at: string; actor: string; action: string }
-export interface Incident extends IncidentInput {
-  id: string; reporterId: string; priority: Priority; status: Status;
-  createdAt: string; responseDueAt: string; resolutionDueAt: string;
-  assigneeId?: string; acknowledgedAt?: string; resolvedAt?: string;
-  resolution?: string; history: AuditEvent[];
+
+export interface HistoryEntry {
+  at: string; actorId: number | null; actorName: string; action: string;
+  fromStatus: string | null; toStatus: string | null; description: string | null;
 }
-export interface Technician { id: string; name: string; skills: string[]; available: boolean }
-export const slaMinutes: Record<Priority, { response: number; resolution: number }> = {
-  P1: { response: 5, resolution: 30 }, P2: { response: 15, resolution: 120 },
-  P3: { response: 60, resolution: 480 }, P4: { response: 240, resolution: 1440 }
-};
-// Proposed course policy; these values are not official IRCTC policies.
-export function calculatePriority(input: Pick<IncidentInput, 'impact' | 'urgency' | 'criticality'>): Priority {
-  const factors = [input.impact, input.urgency, input.criticality];
+
+export interface Resolution {
+  summary: string; rootCause: string; resolvedAt: string; technicianId: number | null;
+  technicianName: string | null; feedback: number | null;
+}
+
+export interface SimilarIncident { id: string; title: string; status: Status; priority: Priority | null }
+
+export interface Incident {
+  id: string; title: string; description: string; category: string;
+  serviceId: number; serviceName: string; impact: number; urgency: number; criticality: number;
+  affectedUsers: number; tatkalWindow: boolean; priority: Priority | null; priorityReason: string | null;
+  status: Status; reporterId: number; reporterName: string; assigneeId: number | null; assigneeName: string | null;
+  createdAt: string; acknowledgedAt: string | null; responseDueAt: string | null; resolutionDueAt: string | null;
+  resolvedAt: string | null; sla: SlaState;
+  // Present on the detail endpoint only:
+  resolution: Resolution | null; history: HistoryEntry[] | null; allowedActions: Action[] | null; similar: SimilarIncident[] | null;
+}
+
+export interface CreatedIncident { incident: Incident; possibleDuplicates: SimilarIncident[] }
+
+export interface Service { id: number; name: string; category: string; criticality: string; criticalityScore: number }
+
+export interface Technician {
+  id: number; name: string; email: string; skill: string; workload: number; capacity: number;
+  experienceYears: number; available: boolean;
+}
+
+export interface Notification { id: number; incidentId: string | null; type: string; message: string; createdAt: string; read: boolean }
+
+export interface EmailOutboxEntry { id: number; recipientEmail: string; incidentId: string | null; type: string; message: string; createdAt: string }
+
+export interface Count { label: string; count: number }
+
+export interface Overview {
+  total: number; open: number; critical: number; resolved: number; slaViolations: number;
+  slaCompliancePercent: number | null; averageResolutionMinutes: number | null;
+  byService: Count[]; byPriority: Count[]; byStatus: Count[]; workload: Technician[];
+}
+
+export interface PriorityFactors {
+  impact: number; urgency: number; criticality: number; securityIncident?: boolean; tatkalWindow?: boolean;
+}
+
+/**
+ * Preview of the priority the server will calculate. Mirrors RailwayPriorityStrategy in
+ * java/domain: security incidents and high-impact, high-urgency incidents in the Tatkal window are
+ * P1; otherwise impact × urgency × service criticality (each 1–3): ≥20 P1, ≥10 P2, ≥5 P3, else P4.
+ * The server's result is the one that counts.
+ */
+export function calculatePriority(f: PriorityFactors): Priority {
+  const factors = [f.impact, f.urgency, f.criticality];
   if (factors.some(n => !Number.isInteger(n) || n < 1 || n > 3)) throw new Error('Priority factors must be integers from 1 to 3.');
   const score = factors.reduce((a, b) => a * b, 1);
-  return score >= 18 ? 'P1' : score >= 8 ? 'P2' : score >= 3 ? 'P3' : 'P4';
-}
-export function nextStatus(incident: Incident, role: Role): Status | undefined {
-  if (role === 'Manager' && incident.status === 'CLASSIFIED') return 'ASSIGNED';
-  if (role === 'Technician') return ({ ASSIGNED: 'ACKNOWLEDGED', ACKNOWLEDGED: 'IN_PROGRESS', IN_PROGRESS: 'RESOLVED' } as Partial<Record<Status, Status>>)[incident.status];
-  if (role === 'Employee' && incident.status === 'RESOLVED') return 'VERIFIED';
-  if (role === 'Manager' && incident.status === 'VERIFIED') return 'CLOSED';
-}
-export function slaBreached(incident: Incident, now = Date.now()): boolean {
-  return new Date(incident.acknowledgedAt ?? now).getTime() > Date.parse(incident.responseDueAt)
-    || new Date(incident.resolvedAt ?? now).getTime() > Date.parse(incident.resolutionDueAt);
+  if (f.securityIncident || (f.tatkalWindow && f.impact === 3 && f.urgency === 3) || score >= 20) return 'P1';
+  return score >= 10 ? 'P2' : score >= 5 ? 'P3' : 'P4';
 }

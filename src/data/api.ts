@@ -1,67 +1,96 @@
-import type { Incident, IncidentInput, Role, Technician } from '../../shared/domain.ts';
-import { calculatePriority, categories, nextStatus, services, slaMinutes } from '../../shared/domain.ts';
+import type {
+  Action, CreatedIncident, EmailOutboxEntry, Incident, IncidentInput, Notification, Overview, Service, Technician, User
+} from '../../shared/domain.ts';
 
-export interface IncidentApi {
-  list(): Promise<Incident[]>;
-  create(input: IncidentInput): Promise<Incident>;
-  advance(id: string, role: Role, resolution?: string): Promise<Incident>;
-  technicians(): Promise<Technician[]>;
-}
-export const users = { Employee: { id: 'employee-demo', name: 'Employee' }, Technician: { id: 'tech-app', name: 'Application technician' }, Manager: { id: 'manager-demo', name: 'IT manager' } };
-const technicians: Technician[] = [
-  { id: 'tech-app', name: 'Application technician', skills: ['Application', 'Software', 'Authentication'], available: true },
-  { id: 'tech-infra', name: 'Infrastructure technician', skills: ['Database', 'Network', 'Security'], available: true }
-];
-const key = 'oop-irctc.incidents.v1';
-function build(input: IncidentInput, id: string): Incident {
-  if (input.title.trim().length < 5 || input.title.length > 120 || input.description.trim().length < 10 || input.description.length > 4000) throw new Error('Use a title of 5–120 characters and description of 10–4000 characters.');
-  if (!(services as readonly string[]).includes(input.service) || !(categories as readonly string[]).includes(input.category)) throw new Error('Select a valid service and category.');
-  const priority = calculatePriority(input); const now = Date.now();
-  return { ...input, title: input.title.trim(), description: input.description.trim(), id, reporterId: users.Employee.id, priority, status: 'CLASSIFIED', createdAt: new Date(now).toISOString(), responseDueAt: new Date(now + slaMinutes[priority].response * 60000).toISOString(), resolutionDueAt: new Date(now + slaMinutes[priority].resolution * 60000).toISOString(), history: [{ at: new Date(now).toISOString(), actor: users.Employee.name, action: `Reported and classified; calculated priority ${priority}.` }] };
-}
-function load(): Incident[] {
-  const raw = localStorage.getItem(key);
-  if (raw) { try { const data = JSON.parse(raw); if (Array.isArray(data)) return data; } catch { /* Report corruption without silently overwriting stored work. */ } throw new Error('Demo storage is unreadable. Clear this site’s local storage to reset it.'); }
-  return [build({ title: 'Payment transactions failing during Tatkal', description: 'Passengers cannot complete payment during the booking window.', service: 'Payments', category: 'Application', impact: 3, urgency: 3, criticality: 3 }, 'INC-DEMO-001')];
-}
-// Strategy implementations are interchangeable. Server must implement authoritative versions.
-export interface AssignmentStrategy { select(incident: Incident, pool: Technician[], incidents: Incident[]): Technician | undefined }
-export class SkillBasedAssignment implements AssignmentStrategy {
-  select(incident: Incident, pool: Technician[], _incidents: Incident[]) { return pool.find(t => t.available && t.skills.includes(incident.category)); }
-}
-export class LoadBasedAssignment implements AssignmentStrategy {
-  select(_incident: Incident, pool: Technician[], incidents: Incident[]) {
-    const count = (id: string) => incidents.filter(i => i.assigneeId === id && !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(i.status)).length;
-    return pool.filter(t => t.available).sort((a, b) => count(a.id) - count(b.id) || a.id.localeCompare(b.id))[0];
+// HTTP client for the Node API (/api/v1). The Vite dev server forwards /api to the API on port 3001.
+
+const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1';
+const TOKEN_KEY = 'bharat-rail.session';
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly fieldErrors?: Record<string, string>;
+  constructor(status: number, code: string, message: string, fieldErrors?: Record<string, string>) {
+    super(message);
+    this.status = status; this.code = code; this.fieldErrors = fieldErrors;
   }
 }
-export class MockIncidentApi implements IncidentApi {
-  constructor(private assignment: AssignmentStrategy = new SkillBasedAssignment()) {}
-  private save(items: Incident[]) { localStorage.setItem(key, JSON.stringify(items)); }
-  async list() { const items = load(); this.save(items); return items; }
-  async technicians() { return technicians; }
-  async create(input: IncidentInput) {
-    const items = load(); const incident = build(input, `INC-${crypto.randomUUID()}`);
-    this.save([incident, ...items]); return incident;
-  }
-  async advance(id: string, role: Role, resolution?: string) {
-    const items = load(); const incident = items.find(i => i.id === id);
-    if (!incident) throw new Error('Incident not found.');
-    const status = nextStatus(incident, role);
-    if (!status) throw new Error('This role cannot perform that transition.');
-    if (role === 'Technician' && incident.assigneeId !== users.Technician.id) throw new Error('This incident is assigned to another technician.');
-    if (role === 'Employee' && incident.reporterId !== users.Employee.id) throw new Error('Only the reporter can verify resolution.');
-    if (status === 'ASSIGNED') {
-      const technician = this.assignment.select(incident, technicians, items);
-      if (!technician) throw new Error('No suitable technician is available.');
-      incident.assigneeId = technician.id;
-    }
-    if (status === 'RESOLVED' && (!resolution || resolution.trim().length < 10 || resolution.length > 4000)) throw new Error('Provide resolution details of 10–4000 characters.');
-    const at = new Date().toISOString();
-    if (status === 'ACKNOWLEDGED') incident.acknowledgedAt = at;
-    if (status === 'RESOLVED') { incident.resolution = resolution!.trim(); incident.resolvedAt = at; }
-    incident.history.push({ at, actor: users[role].name, action: `${incident.status} → ${status}${status === 'ASSIGNED' ? ` (${incident.assigneeId})` : ''}` });
-    incident.status = status; this.save(items); return incident;
-  }
+
+function readToken(): string | null {
+  try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; }
 }
-export const api: IncidentApi = new MockIncidentApi();
+function writeToken(value: string | null) {
+  try { if (value) sessionStorage.setItem(TOKEN_KEY, value); else sessionStorage.removeItem(TOKEN_KEY); } catch { /* storage unavailable: session lasts until reload */ }
+}
+
+let token: string | null = readToken();
+let onUnauthorized: () => void = () => {};
+
+/** Called when the server says the session is no longer valid (expired, revoked). */
+export function setUnauthorizedHandler(handler: () => void) { onUnauthorized = handler; }
+
+async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers: { ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+  } catch {
+    throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Check that it is running, then try again.');
+  }
+  if (res.status === 204) return undefined as T;
+  const data = await res.json().catch(() => undefined) as { error?: { code: string; message: string; fieldErrors?: Record<string, string> } } | undefined;
+  if (!res.ok) {
+    if (res.status === 401 && token && !path.startsWith('/auth/login')) { token = null; writeToken(null); onUnauthorized(); }
+    throw new ApiError(res.status, data?.error?.code ?? 'ERROR', data?.error?.message ?? `Request failed (${res.status}).`, data?.error?.fieldErrors);
+  }
+  return data as T;
+}
+
+function query(params: Record<string, string | undefined>) {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]).toString();
+  return q ? `?${q}` : '';
+}
+
+export interface IncidentFilters {
+  q?: string; status?: string; priority?: string; serviceId?: string; category?: string;
+  sla?: string; technicianId?: string; from?: string; to?: string;
+}
+
+export const api = {
+  hasSession: () => token !== null,
+
+  async login(email: string, password: string): Promise<User> {
+    const r = await request<{ token: string; user: User }>('POST', '/auth/login', { email, password });
+    token = r.token; writeToken(r.token);
+    return r.user;
+  },
+  async logout() {
+    try { await request('POST', '/auth/logout'); } finally { token = null; writeToken(null); }
+  },
+  me: async () => (await request<{ user: User }>('GET', '/auth/me')).user,
+
+  incidents: (filters: IncidentFilters = {}) => request<Incident[]>('GET', `/incidents${query({ ...filters })}`),
+  incident: (id: string) => request<Incident>('GET', `/incidents/${encodeURIComponent(id)}`),
+  report: (input: IncidentInput) => request<CreatedIncident>('POST', '/incidents', input),
+  assign: (id: string, choice: { strategy?: string; technicianId?: number }) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/assignment`, choice),
+  transition: (id: string, action: Exclude<Action, 'ASSIGN' | 'FEEDBACK' | 'NOTE'>, details: { summary?: string; rootCause?: string } = {}) =>
+    request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/transitions`, { action, ...details }),
+  note: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/notes`, { text }),
+  feedback: (id: string, rating: number) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/feedback`, { rating }),
+
+  services: () => request<Service[]>('GET', '/services'),
+  categories: () => request<string[]>('GET', '/categories'),
+  strategies: () => request<string[]>('GET', '/assignment-strategies'),
+  technicians: () => request<Technician[]>('GET', '/technicians'),
+
+  notifications: () => request<{ items: Notification[]; unread: number }>('GET', '/notifications'),
+  readNotification: (id: number) => request<void>('POST', `/notifications/${id}/read`),
+  readAllNotifications: () => request<void>('POST', '/notifications/read-all'),
+  emailOutbox: () => request<EmailOutboxEntry[]>('GET', '/notifications/outbox'),
+
+  overview: () => request<Overview>('GET', '/reports/overview')
+};

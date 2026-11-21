@@ -8,18 +8,20 @@ An internal employee/support portal for ticketing IT incidents, not a passenger 
 
 ```mermaid
 flowchart LR
-  E[Employee] --> UI[React pages and routes]
+  E[Employee] --> UI[React UI]
   T[Technician] --> UI
   M[IT Manager] --> UI
-  UI --> Contract[IncidentApi interface]
-  Contract --> Mock[Current browser mock]
-  Mock --> Local[localStorage]
-  Contract -. planned HTTP adapter .-> API[REST controllers and authentication]
-  API --> Domain[Incident service and domain objects]
-  Domain --> Strategies[Priority and assignment strategies]
-  Domain --> Events[Audit and notification subscribers]
-  Domain --> Repository[Repository interfaces]
-  Repository --> DB[(Proposed PostgreSQL)]
+  UI -->|/api/v1 + bearer token| API[Node API: auth, sessions, role checks]
+  API -->|users| DB[(PostgreSQL)]
+  API -->|actor id + role + internal token| SVC[Java incident service]
+  SVC --> WF[IncidentWorkflowService]
+  WF --> Domain[Domain model: Incident lifecycle, strategies]
+  WF --> Repos[JDBC repositories]
+  Repos --> DB
+  WF --> Events[EventPublisher]
+  Events --> InApp[In-app notifications]
+  Events --> Email[Simulated email outbox]
+  SLA[SLA monitor] --> WF
 ```
 
 ## Navigation and ownership

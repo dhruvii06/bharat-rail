@@ -12,10 +12,10 @@ INSERT INTO it_services (service_name, category, business_criticality) VALUES
 ('E_CATERING_PORTAL', 'APPLICATION', 'MEDIUM');
 
 INSERT INTO users (full_name, email, password_hash, role, department) VALUES
-('Rajesh Sharma', 'rajesh.admin@irctc.co.in', 'hash_admin123', 'ADMIN', 'IT Operations'),
-('Ananya Verma', 'ananya.tech@irctc.co.in', 'hash_tech123', 'TECHNICIAN', 'Payment Systems'),
-('Vikram Singh', 'vikram.tech@irctc.co.in', 'hash_tech123', 'TECHNICIAN', 'Database Admin'),
-('Priya Nair', 'priya.emp@irctc.co.in', 'hash_emp123', 'EMPLOYEE', 'Customer Support');
+('Rajesh Sharma', 'rajesh.admin@demo.local', 'hash_admin123', 'ADMIN', 'IT Operations'),
+('Ananya Verma', 'ananya.tech@demo.local', 'hash_tech123', 'TECHNICIAN', 'Payment Systems'),
+('Vikram Singh', 'vikram.tech@demo.local', 'hash_tech123', 'TECHNICIAN', 'Database Admin'),
+('Priya Nair', 'priya.emp@demo.local', 'hash_emp123', 'EMPLOYEE', 'Customer Support');
 
 INSERT INTO technician_details (technician_id, skill_category, current_workload, experience_years, is_available) VALUES
 (2, 'PAYMENT', 1, 6, TRUE),

@@ -11,5 +11,6 @@ services:
       - itsm-data:/var/lib/postgresql/data
       - ./src/main/resources/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./src/main/resources/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ./src/main/resources/integration.sql:/docker-entrypoint-initdb.d/03-integration.sql:ro
 volumes:
   itsm-data:

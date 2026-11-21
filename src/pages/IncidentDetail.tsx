@@ -1,0 +1,135 @@
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import type { Action, Incident, SimilarIncident, User } from '../../shared/domain';
+import { useLoad } from '../auth';
+import { ErrorNote, PriorityBadge, SlaTag, StatusTag, formatDate, humanize } from '../components/ui';
+import { api } from '../data/api';
+
+const levelName = ['', 'Low', 'Medium', 'High'];
+
+export function IncidentDetail({ user }: { user: User }) {
+  const { id = '' } = useParams();
+  const location = useLocation() as { pathname: string; state?: { duplicates?: SimilarIncident[]; justCreated?: boolean } | null };
+  const navigate = useNavigate();
+  // The "just created" banner shows once; clear it from history so reloads and other users don't see it.
+  const [flash] = useState(() => location.state ?? {});
+  useEffect(() => { if (location.state) navigate(location.pathname, { replace: true, state: null }); }, [location.state, location.pathname, navigate]);
+  const { data: incident, error, loading, reload, setData } = useLoad(() => api.incident(id), [id]);
+  const [actionError, setActionError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function run(work: () => Promise<Incident>) {
+    setBusy(true); setActionError('');
+    try { setData(await work()); } catch (e) { setActionError((e as Error).message); } finally { setBusy(false); }
+  }
+
+  if (!incident) return <><Link to="/incidents">← Incident queue</Link>{loading ? <p role="status">Loading incident…</p> : <ErrorNote message={error} onRetry={reload} />}</>;
+  const actions = incident.allowedActions ?? [];
+  const has = (a: Action) => actions.includes(a);
+  const duplicates = flash.duplicates ?? [];
+
+  return <>
+    <Link to="/incidents">← Incident queue</Link>
+    <div className="detail-head">
+      <h1>{incident.title}</h1>
+      <p className="muted">{incident.id} · reported by {incident.reporterName} · {formatDate(incident.createdAt)}</p>
+      <div className="tags"><PriorityBadge priority={incident.priority} /><StatusTag status={incident.status} /><SlaTag sla={incident.sla} />{incident.tatkalWindow && <span className="status-tag">TATKAL WINDOW</span>}</div>
+    </div>
+
+    {flash.justCreated && <p className="notice-box" role="status">Incident created and classified as <strong>{incident.priority}</strong>. The IT manager has been notified.</p>}
+    {duplicates.length > 0 && <div className="warning-box"><strong>Possible duplicates.</strong> These open incidents look similar: {duplicates.map((d, n) => <span key={d.id}>{n > 0 && ', '}<Link to={`/incidents/${d.id}`}>{d.id}</Link> ({d.title})</span>)}.</div>}
+
+    <div className="detail-grid">
+      <section className="facts">
+        <h2>Details</h2>
+        <p className="preserve">{incident.description}</p>
+        <dl>
+          <Fact label="Service">{incident.serviceName} · criticality {incident.criticality}/3</Fact>
+          <Fact label="Category">{humanize(incident.category)}</Fact>
+          <Fact label="Impact / urgency">{levelName[incident.impact]} / {levelName[incident.urgency]}</Fact>
+          <Fact label="Affected passengers">{incident.affectedUsers.toLocaleString()}</Fact>
+          <Fact label="Why this priority">{incident.priorityReason ?? '—'}</Fact>
+          <Fact label="Assigned to">{incident.assigneeName ?? 'Awaiting assignment'}</Fact>
+          <Fact label="Response due">{formatDate(incident.responseDueAt)}{incident.acknowledgedAt && <small>Acknowledged {formatDate(incident.acknowledgedAt)}</small>}</Fact>
+          <Fact label="Resolution due">{formatDate(incident.resolutionDueAt)}{incident.resolvedAt && <small>Resolved {formatDate(incident.resolvedAt)}</small>}</Fact>
+        </dl>
+        {incident.resolution && <>
+          <h2>Resolution</h2>
+          <dl>
+            <Fact label="Fix">{incident.resolution.summary}</Fact>
+            <Fact label="Root cause">{incident.resolution.rootCause}</Fact>
+            <Fact label="Resolved by">{incident.resolution.technicianName ?? '—'}</Fact>
+            <Fact label="Reporter rating">{incident.resolution.feedback ? `${incident.resolution.feedback} / 5` : 'Not rated yet'}</Fact>
+          </dl>
+        </>}
+      </section>
+
+      <section className="actions-panel">
+        <h2>Actions</h2>
+        <ErrorNote message={actionError} />
+        {actions.filter(a => a !== 'NOTE').length === 0 && <p className="muted">No actions for you at this stage.</p>}
+        {has('ASSIGN') && <AssignForm busy={busy} onAssign={choice => run(() => api.assign(incident.id, choice))} />}
+        {has('ACKNOWLEDGE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'ACKNOWLEDGE'))}>Acknowledge</button>}
+        {has('START') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'START'))}>Start investigation</button>}
+        {has('RESOLVE') && <ResolveForm busy={busy} onResolve={(summary, rootCause) => run(() => api.transition(incident.id, 'RESOLVE', { summary, rootCause }))} />}
+        {has('VERIFY') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'VERIFY'))}>Confirm the fix works</button>}
+        {has('FEEDBACK') && <FeedbackForm busy={busy} onRate={rating => run(() => api.feedback(incident.id, rating))} />}
+        {has('CLOSE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'CLOSE'))}>Close incident</button>}
+        {has('NOTE') && <NoteForm busy={busy} onNote={text => run(() => api.note(incident.id, text))} />}
+        {user.role !== 'Employee' && incident.similar && incident.similar.length > 0 && <>
+          <h2>Similar open incidents</h2>
+          <ul className="similar">{incident.similar.map(s => <li key={s.id}><Link to={`/incidents/${s.id}`}>{s.id}</Link> {s.title} <StatusTag status={s.status} /></li>)}</ul>
+        </>}
+      </section>
+    </div>
+
+    <h2>Incident history</h2>
+    <ol className="history">{(incident.history ?? []).map((h, n) => <li key={n}>
+      <strong>{humanize(h.action)}{h.fromStatus !== h.toStatus && h.toStatus && <span className="transition"> {h.fromStatus ?? '—'} → {h.toStatus}</span>}{h.description && <span className="desc">{h.description}</span>}</strong>
+      <small>{formatDate(h.at)} · {h.actorName}</small>
+    </li>)}</ol>
+  </>;
+}
+
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="fact"><dt>{label}</dt><dd>{children}</dd></div>;
+}
+
+function AssignForm({ busy, onAssign }: { busy: boolean; onAssign: (choice: { strategy?: string; technicianId?: number }) => void }) {
+  const technicians = useLoad(() => api.technicians(), []);
+  const [mode, setMode] = useState('skill');
+  return <div className="action-form">
+    <label>Assign using<select id="assign-mode" value={mode} onChange={e => setMode(e.target.value)}>
+      <option value="skill">Skill-based strategy</option>
+      <option value="load">Load-based strategy</option>
+      <optgroup label="Choose a technician">{technicians.data?.map(t => <option key={t.id} value={`tech:${t.id}`}>{t.name} · {humanize(t.skill)} · {t.workload}/{t.capacity}</option>)}</optgroup>
+    </select></label>
+    <button disabled={busy} onClick={() => onAssign(mode.startsWith('tech:') ? { technicianId: Number(mode.slice(5)) } : { strategy: mode })}>Assign</button>
+  </div>;
+}
+
+function ResolveForm({ busy, onResolve }: { busy: boolean; onResolve: (summary: string, rootCause: string) => void }) {
+  const [summary, setSummary] = useState('');
+  const [rootCause, setRootCause] = useState('');
+  return <div className="action-form">
+    <label>What fixed it<textarea id="resolution-summary" minLength={10} maxLength={4000} value={summary} onChange={e => setSummary(e.target.value)} /></label>
+    <label>Root cause<input id="root-cause" maxLength={2000} value={rootCause} onChange={e => setRootCause(e.target.value)} /></label>
+    <button disabled={busy} onClick={() => onResolve(summary, rootCause)}>Resolve incident</button>
+  </div>;
+}
+
+function FeedbackForm({ busy, onRate }: { busy: boolean; onRate: (rating: number) => void }) {
+  const [rating, setRating] = useState(5);
+  return <div className="action-form inline">
+    <label>Rate the resolution<select id="rating" value={rating} onChange={e => setRating(Number(e.target.value))}>{[5, 4, 3, 2, 1].map(r => <option key={r} value={r}>{r} / 5</option>)}</select></label>
+    <button disabled={busy} onClick={() => onRate(rating)}>Send feedback</button>
+  </div>;
+}
+
+function NoteForm({ busy, onNote }: { busy: boolean; onNote: (text: string) => void }) {
+  const [text, setText] = useState('');
+  return <div className="action-form">
+    <label>Add a note<textarea id="note" className="short" maxLength={2000} value={text} onChange={e => setText(e.target.value)} placeholder="Investigation notes, extra information, questions" /></label>
+    <button className="secondary" disabled={busy || text.trim().length < 2} onClick={() => { onNote(text); setText(''); }}>Add note</button>
+  </div>;
+}

@@ -78,6 +78,12 @@ public final class DomainModelChecks {
         check(svc.findPotentialDuplicates(similar).size()==1,"duplicate candidate detection");
         check(inc.getAuditTrail().stream().allMatch(e->e.actorId()!=null),"audit attributes actor");
         throwsException(IllegalArgumentException.class,()->new RailwayService("Bad",4),"invalid criticality rejected");
+        UUID savedId=UUID.randomUUID();
+        Technician savedTech=new Technician(UUID.randomUUID(),"Saved","saved@example.test",Set.of(Skill.PAYMENTS),3,1,true);
+        Incident restored=Incident.restore(savedId,"Saved","Loaded from storage",EMP,SERVICE,IncidentCategory.PAYMENT,
+            Impact.HIGH,Urgency.HIGH,10,false,false,START,IncidentStatus.ASSIGNED,Priority.P1_CRITICAL,savedTech,null,null,null);
+        check(restored.getId().equals(savedId) && restored.getAuditTrail().isEmpty(),"restore keeps identity, adds no audit");
+        throwsException(InvalidTransitionException.class,()->restored.close(ADMIN,START),"restored incident still enforces lifecycle");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

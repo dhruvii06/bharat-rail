@@ -5,9 +5,11 @@ import { createApp } from '../backend/app.ts';
 import { AuthService } from '../backend/auth/AuthService.ts';
 import { hashPassword, verifyPassword } from '../backend/auth/passwords.ts';
 import { InMemorySessionRepository, InMemoryUserRepository } from '../backend/repositories/memory.ts';
+import { IncidentServiceClient } from '../backend/http/incidentService.ts';
+import { createServer } from 'node:http';
 
 const PASSWORD = 'TestPass123';
-let server, base, clock;
+let server, base, clock, fakeService, lastForwarded;
 
 async function call(method, path, { body, token, raw } = {}) {
   const headers = {};
@@ -28,11 +30,24 @@ before(async () => {
   }
   clock = { now: new Date('2026-11-22T09:00:00Z') };
   const auth = new AuthService(users, sessions, { now: () => clock.now, maxFailedLogins: 3 });
-  server = createApp({ users, sessions, auth }).listen(0, '127.0.0.1');
+  // Fake Java incident service: records what Node forwards and echoes it back.
+  fakeService = createServer((req, res) => {
+    let raw = '';
+    req.on('data', c => { raw += c; });
+    req.on('end', () => {
+      lastForwarded = { method: req.method, url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : undefined };
+      if (req.url.startsWith('/incidents/NOPE')) { res.writeHead(409, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'INVALID_TRANSITION', message: 'Not allowed now.' } })); return; }
+      res.writeHead(req.method === 'POST' ? 201 : 200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ echoed: true, url: req.url }));
+    });
+  }).listen(0, '127.0.0.1');
+  await new Promise(r => fakeService.once('listening', r));
+  const incidentService = new IncidentServiceClient(`http://127.0.0.1:${fakeService.address().port}`, 'test-token');
+  server = createApp({ users, sessions, auth, incidentService }).listen(0, '127.0.0.1');
   await new Promise(r => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api/v1`;
 });
-after(() => server.close());
+after(() => { server.close(); fakeService.close(); });
 
 describe('passwords', () => {
   test('hash verifies only the original password', async () => {
@@ -143,8 +158,8 @@ describe('authorization on planned endpoints', () => {
     assert.equal((await call('POST', '/incidents/INC1/assignment', { token: await login('tech@test.local'), body: {} })).status, 403);
   });
 
-  test('allowed role gets 501 until the endpoint is built', async () => {
-    const r = await call('GET', '/reports/overview', { token: await login('mgr@test.local') });
+  test('allowed role gets 501 on endpoints not built yet', async () => {
+    const r = await call('GET', '/admin/users', { token: await login('mgr@test.local') });
     assert.equal(r.status, 501);
     assert.equal(r.body.error.code, 'NOT_IMPLEMENTED');
   });
@@ -159,5 +174,58 @@ describe('authorization on planned endpoints', () => {
     const res = await fetch(`${base}/health`);
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(res.headers.get('x-powered-by'), null);
+  });
+});
+
+describe('forwarding to the incident service', () => {
+  test('forwards path, query, signed-in user, role and internal token', async () => {
+    const r = await call('GET', '/reports/overview?from=2026-11-01', { token: await login('mgr@test.local') });
+    assert.equal(r.status, 200);
+    assert.equal(lastForwarded.url, '/reports/overview?from=2026-11-01');
+    assert.equal(lastForwarded.headers['x-actor-id'], 'm1');
+    assert.equal(lastForwarded.headers['x-actor-role'], 'ADMIN');
+    assert.equal(lastForwarded.headers['x-internal-token'], 'test-token');
+  });
+
+  test('forwards the JSON body and passes the status through', async () => {
+    const body = { title: 'UPI payment failing', serviceId: 2 };
+    const r = await call('POST', '/incidents', { token: await login('emp@test.local'), body });
+    assert.equal(r.status, 201);
+    assert.deepEqual(lastForwarded.body, body);
+    assert.equal(lastForwarded.headers['x-actor-role'], 'EMPLOYEE');
+  });
+
+  test('a role the client sends is never forwarded; the session decides', async () => {
+    await call('POST', '/incidents/INC-1/notes', { token: await login('tech@test.local'), body: { text: 'hi', role: 'Manager' } });
+    assert.equal(lastForwarded.headers['x-actor-role'], 'TECHNICIAN');
+    assert.equal(lastForwarded.headers['x-actor-id'], 't1');
+  });
+
+  test('domain rule errors from the service reach the client unchanged', async () => {
+    const r = await call('POST', '/incidents/NOPE/transitions', { token: await login('mgr@test.local'), body: { action: 'CLOSE' } });
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error.code, 'INVALID_TRANSITION');
+  });
+
+  test('the role gate runs before anything is forwarded', async () => {
+    lastForwarded = undefined;
+    const r = await call('POST', '/incidents', { token: await login('tech@test.local'), body: {} });
+    assert.equal(r.status, 403);
+    assert.equal(lastForwarded, undefined);
+  });
+
+  test('service down returns 503 with a clear message', async () => {
+    const users = new InMemoryUserRepository();
+    const sessions = new InMemorySessionRepository();
+    await users.create({ id: 'm9', name: 'm9', email: 'm9@test.local', role: 'Manager', passwordHash: await hashPassword(PASSWORD), isTeamLead: false, active: true });
+    const down = createApp({ users, sessions, incidentService: new IncidentServiceClient('http://127.0.0.1:9', 't') }).listen(0, '127.0.0.1');
+    await new Promise(r => down.once('listening', r));
+    try {
+      const url = `http://127.0.0.1:${down.address().port}/api/v1`;
+      const token = (await (await fetch(`${url}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: 'm9@test.local', password: PASSWORD }) })).json()).token;
+      const res = await fetch(`${url}/incidents`, { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(res.status, 503);
+      assert.match((await res.json()).error.message, /incident service is not running/);
+    } finally { down.close(); }
   });
 });
