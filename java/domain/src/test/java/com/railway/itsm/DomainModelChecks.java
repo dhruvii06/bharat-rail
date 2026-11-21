@@ -92,6 +92,24 @@ public final class DomainModelChecks {
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.MEDIUM,false,false))==Priority.P2_HIGH,"score 12 P2");
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.LOW,false,false))==Priority.P3_MEDIUM,"score 6 P3");
         check(priority.calculate(incident(Impact.LOW,Urgency.LOW,false,true))==Priority.P4_LOW,"Tatkal without maximum impact and urgency does not override");
+
+        var graph=com.railway.itsm.domain.impact.ServiceDependencyGraph.railwayExample();
+        var paymentImpact=graph.analyze("UPI_PAYMENT_GATEWAY");
+        check(paymentImpact.directCount()==4 && paymentImpact.indirectCount()>=1,
+            "payment outage cascades to direct and indirect dependents");
+        check(paymentImpact.affected().stream().anyMatch(a->a.id().equals("TATKAL_BOOKING_ENGINE") && a.depth()==1),
+            "Tatkal affected directly by payment outage");
+        check(paymentImpact.affected().stream().map(a->a.id()).distinct().count()==paymentImpact.affected().size(),
+            "dependency analysis never duplicates affected services");
+        check(graph.analyze("CATERING_ORDERS").affected().isEmpty(),
+            "leaf service outage has no predicted blast radius");
+        throwsException(IllegalArgumentException.class,()->graph.analyze("NOT_CONFIGURED"),
+            "unknown service cannot be simulated");
+        var cycleGraph=new com.railway.itsm.domain.impact.ServiceDependencyGraph(List.of(
+            new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("A","A","Ops",3,List.of("B")),
+            new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("B","B","Ops",2,List.of("A"))));
+        check(cycleGraph.analyze("A").affected().size()==1,
+            "cyclic dependency graph terminates safely");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }
