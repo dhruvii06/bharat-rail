@@ -9,6 +9,7 @@ public class PostgresResolutionRepository implements ResolutionRepository {
 
     @Override
     public Resolution resolveIncident(Resolution resolution) {
+        String selectSql = "SELECT status FROM incidents WHERE incident_id = ? FOR UPDATE";
         String insertResSql = """
             INSERT INTO resolutions (incident_id, technician_id, root_cause, resolution_summary, resolved_at)
             VALUES (?, ?, ?, ?, ?)
@@ -17,11 +18,22 @@ public class PostgresResolutionRepository implements ResolutionRepository {
             """;
         String updateIncSql = "UPDATE incidents SET status = 'RESOLVED' WHERE incident_id = ?";
         String updateTechSql = "UPDATE technician_details SET current_workload = GREATEST(current_workload - 1, 0) WHERE technician_id = ?";
-        String auditSql = "INSERT INTO audit_logs (incident_id, performed_by, action, previous_state, new_state, description) VALUES (?, ?, 'INCIDENT_RESOLVED', 'IN_PROGRESS', 'RESOLVED', ?)";
+        String auditSql = "INSERT INTO audit_logs (incident_id, performed_by, action, previous_state, new_state, description) VALUES (?, ?, 'INCIDENT_RESOLVED', ?, 'RESOLVED', ?)";
 
         try (Connection conn = DatabaseConnection.getConnection()) {
             conn.setAutoCommit(false);
             try {
+                String oldStatus;
+                try (PreparedStatement psSelect = conn.prepareStatement(selectSql)) {
+                    psSelect.setString(1, resolution.getIncidentId());
+                    ResultSet rs = psSelect.executeQuery();
+                    if (!rs.next()) {
+                        conn.rollback();
+                        throw new IllegalArgumentException("Incident not found: " + resolution.getIncidentId());
+                    }
+                    oldStatus = rs.getString("status");
+                }
+
                 try (PreparedStatement ps1 = conn.prepareStatement(insertResSql, Statement.RETURN_GENERATED_KEYS)) {
                     ps1.setString(1, resolution.getIncidentId());
                     ps1.setObject(2, resolution.getTechnicianId(), Types.BIGINT);
@@ -48,13 +60,14 @@ public class PostgresResolutionRepository implements ResolutionRepository {
                 try (PreparedStatement ps4 = conn.prepareStatement(auditSql)) {
                     ps4.setString(1, resolution.getIncidentId());
                     ps4.setObject(2, resolution.getTechnicianId(), Types.BIGINT);
-                    ps4.setString(3, "Resolved: " + resolution.getResolutionSummary());
+                    ps4.setString(3, oldStatus);
+                    ps4.setString(4, "Resolved: " + resolution.getResolutionSummary());
                     ps4.executeUpdate();
                 }
 
                 conn.commit();
                 return resolution;
-            } catch (SQLException e) {
+            } catch (SQLException | RuntimeException e) {
                 conn.rollback();
                 throw e;
             }
