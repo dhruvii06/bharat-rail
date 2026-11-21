@@ -1,55 +1,50 @@
-import { AuthGate, type AuthUser } from './auth';
-import { useEffect, useState, type FormEvent } from 'react';
-import { Link, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
-import { api, setIncidentActor } from './data/api';
-import { calculatePriority, categories, nextStatus, services, slaBreached, statuses, type Incident, type IncidentInput, type Role } from '../shared/domain';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import type { User } from '../shared/domain';
+import { useAuth } from './auth';
+import { Notifications } from './components/Notifications';
+import { IncidentDetail } from './pages/IncidentDetail';
+import { IncidentList } from './pages/IncidentList';
+import { Login } from './pages/Login';
+import { Management } from './pages/Management';
+import { Overview } from './pages/Overview';
+import { ReportIncident } from './pages/ReportIncident';
 
-const date = (value: string) => new Date(value).toLocaleString();
-export default function App() { return <AuthGate>{(user, logout) => <Workspace key={user.id} user={user} logout={logout} />}</AuthGate>; }
-function Workspace({ user, logout }: { user: AuthUser; logout: () => Promise<void> }) {
-  setIncidentActor(user);
-  const role = user.role;
-  const [items, setItems] = useState<Incident[]>([]);
-  const [loading, setLoading] = useState(true); const [error, setError] = useState('');
-  async function refresh() { setLoading(true); setError(''); try { setItems(await api.list()); } catch (e) { setError((e as Error).message); } finally { setLoading(false); } }
-  useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 60000); return () => clearInterval(timer); }, []);
-  const visible = items.filter(i => role === 'Manager' || (role === 'Employee' ? i.reporterId === user.id : i.assigneeId === user.id));
-  return <><header><div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div><div className="account-menu"><span>{user.name} · {role === 'Manager' ? 'Administrator / IT Manager' : role}</span><button onClick={() => void logout()}>Sign out</button></div></header>
-    <nav aria-label="Main navigation"><div className="nav-label">SERVICE OPERATIONS</div><NavLink to="/" end>Overview</NavLink><NavLink to="/incidents" end>{role === 'Technician' ? 'My assignments' : 'Incidents'}</NavLink>{role === 'Employee' && <NavLink to="/incidents/new">Report incident</NavLink>}{role === 'Manager' && <NavLink to="/management">Management</NavLink>}<div className="nav-bottom">I-ITSM<br/><span>Internal service management</span></div></nav>
-    <main>{error && <p role="alert" className="error">{error} <button onClick={() => void refresh()}>Retry</button></p>}{loading && <p role="status">Refreshing incidents…</p>}
-      <Routes><Route path="/" element={<Overview items={visible} role={role} />} /><Route path="/incidents" element={<IncidentList items={visible} />} /><Route path="/incidents/new" element={role === 'Employee' ? <Report onSaved={refresh} /> : <p>Switch to Employee to report an incident .</p>} /><Route path="/incidents/:id" element={<Detail items={visible} loading={loading} role={role} refresh={refresh} />} /><Route path="/management" element={role === 'Manager' ? <Management items={items} /> : <p>This screen is available to the Manager role.</p>} /><Route path="*" element={<><h1>Page not found</h1><Link to="/">Return to overview</Link></>} /></Routes>
-    </main><footer>Bharat Rail · IT Service Management</footer></>;
-}
-function Overview({ items, role }: { items: Incident[]; role: Role }) {
-  const metrics = { 'Visible incidents': items.length, 'Active incidents': items.filter(i => !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(i.status)).length, 'Critical incidents': items.filter(i => i.priority === 'P1' && i.status !== 'CLOSED').length, 'SLA breaches': items.filter(i => slaBreached(i)).length };
-  return <><div className="page-heading"><div><div className="eyebrow">SERVICE OPERATIONS / OVERVIEW</div><h1>{role === 'Manager' ? 'Operations overview' : role === 'Technician' ? 'My work overview' : 'My incident overview'}</h1></div>{role === 'Employee' && <Link className="button-link" to="/incidents/new">Report incident</Link>}</div><div className="metrics">{Object.entries(metrics).map(([label, value]) => <section key={label}><span>{label}</span><strong>{value}</strong></section>)}</div><div className="section-heading"><h2>Recent incidents</h2><Link to="/incidents">View all incidents</Link></div><Rows items={items.slice(0, 5)} /><div className="overview-bottom"><section><h2>Incidents by service</h2>{services.filter(service => items.some(i => i.service === service)).map(service => <div className="service-row" key={service}><span>{service}</span><span>{items.filter(i => i.service === service).length}</span></div>)}{!items.length && <p>No service incidents to display.</p>}</section><section><h2>Resolution workflow</h2><ol className="workflow"><li>Report and prioritise</li><li>Assign and investigate</li><li>Resolve and verify</li><li>Close incident</li></ol><p className="muted">Actions are available according to your selected role.</p></section></div></>;
-
-}
-function Rows({ items }: { items: Incident[] }) {
-  if (!items.length) return <div className="empty-state"><h2>No incidents to display</h2><p>Reported incidents will appear here. Adjust your filters or selected role to view other work.</p></div>;
-  return <div className="table-wrap"><table><thead><tr><th>Incident</th><th>Service</th><th>Priority</th><th>Status</th><th>SLA</th></tr></thead><tbody>{items.map(i => <tr key={i.id}><td><Link to={`/incidents/${i.id}`}>{i.title}</Link><small>{i.id}</small></td><td>{i.service}</td><td><span className={`badge ${i.priority}`}>{i.priority}</span></td><td><span className="status-tag">{i.status.replaceAll('_', ' ')}</span></td><td><span className={slaBreached(i) ? 'sla-breach' : 'sla-normal'}>{slaBreached(i) ? 'Breached' : i.resolvedAt ? 'Met' : 'Within target'}</span></td></tr>)}</tbody></table></div>;
-}
-function IncidentList({ items }: { items: Incident[] }) {
-  const [query, setQuery] = useState(''); const [status, setStatus] = useState(''); const [priority, setPriority] = useState(''); const [service, setService] = useState(''); const [category, setCategory] = useState(''); const [sla, setSla] = useState('');
-  const filtered = items.filter(i => `${i.id} ${i.title} ${i.description}`.toLowerCase().includes(query.toLowerCase()) && (!status || status === i.status) && (!priority || priority === i.priority) && (!service || service === i.service) && (!category || category === i.category) && (!sla || (sla === 'breached') === slaBreached(i)));
-  return <><div className="page-heading"><div><div className="eyebrow">SERVICE OPERATIONS / INCIDENTS</div><h1>Incident queue</h1></div></div><div className="filters"><label>Search<input value={query} onChange={e => setQuery(e.target.value)} placeholder="ID, title or description" /></label>{[['Status', status, setStatus, statuses], ['Priority', priority, setPriority, ['P1', 'P2', 'P3', 'P4']], ['Service', service, setService, services], ['Category', category, setCategory, categories], ['SLA', sla, setSla, ['breached', 'within target']]].map(([label, value, setter, options]) => <label key={String(label)}>{String(label)}<select value={value as string} onChange={e => (setter as (s: string) => void)(e.target.value)}><option value="">All</option>{(options as readonly string[]).map(v => <option key={v}>{v}</option>)}</select></label>)}</div><p role="status">{filtered.length} result(s)</p><Rows items={filtered} /></>;
-}
-function Report({ onSaved }: { onSaved: () => Promise<void> }) {
-  const navigate = useNavigate(); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  const [input, setInput] = useState<IncidentInput>({ title: '', description: '', service: services[0], category: categories[0], impact: 1, urgency: 1, criticality: 1 });
-  const set = (key: keyof IncidentInput, value: string | number) => setInput(prev => ({ ...prev, [key]: value }));
-  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setError(''); try { const item = await api.create(input); await onSaved(); navigate(`/incidents/${item.id}`); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  return <><div className="page-heading"><div><div className="eyebrow">INCIDENTS / NEW REPORT</div><h1>Report incident</h1></div><Link to="/incidents">Cancel</Link></div><form onSubmit={submit}>{error && <p role="alert" className="error">{error}</p>}<h2>Incident information</h2><label>Title<input required minLength={5} maxLength={120} value={input.title} onChange={e => set('title', e.target.value)} /></label><label>Description<textarea required minLength={10} maxLength={4000} value={input.description} onChange={e => set('description', e.target.value)} /></label><div className="filters">{[['service', services], ['category', categories]].map(([key, options]) => <label key={key as string}>{key as string}<select value={input[key as 'service' | 'category']} onChange={e => set(key as keyof IncidentInput, e.target.value)}>{(options as readonly string[]).map(v => <option key={v}>{v}</option>)}</select></label>)}</div><h2>Business impact</h2><div className="filters">{(['impact', 'urgency', 'criticality'] as const).map(key => <label key={key}>{key}<select value={input[key]} onChange={e => set(key, Number(e.target.value))}><option value={1}>1 · Low</option><option value={2}>2 · Medium</option><option value={3}>3 · High</option></select></label>)}</div><p>Suggested priority: <strong>{calculatePriority(input)}</strong> · calculated from impact × urgency × business criticality.</p><button disabled={busy}>{busy ? 'Creating…' : 'Create incident'}</button></form></>;
-}
-function Detail({ items, loading, role, refresh }: { items: Incident[]; loading: boolean; role: Role; refresh: () => Promise<void> }) {
-  const { id } = useParams(); const incident = items.find(i => i.id === id);
-  const [resolution, setResolution] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
-  if (!incident) return <p>{loading ? 'Loading incident…' : 'Incident not found or not visible to this role.'}</p>;
-  const next = nextStatus(incident, role);
-  async function advance() { setBusy(true); setError(''); try { await api.advance(incident!.id, role, resolution); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
-  return <><Link to="/incidents">← Incident queue</Link><h1>{incident.title}</h1><p className="muted">{incident.id}</p><section><p><strong>{incident.priority}</strong> · {incident.status} · {incident.service} / {incident.category}</p><p className="preserve">{incident.description}</p><p>Assigned to: {incident.assigneeId ?? 'Awaiting manager assignment'}</p><p>Response deadline: {date(incident.responseDueAt)}<br/>Resolution deadline: {date(incident.resolutionDueAt)}</p><p>SLA: {slaBreached(incident) ? 'Breached' : 'Within target'}</p>{incident.resolution && <><h2>Resolution</h2><p className="preserve">{incident.resolution}</p></>}{error && <p role="alert" className="error">{error}</p>}{next === 'RESOLVED' && <label>Resolution details<textarea minLength={10} maxLength={4000} value={resolution} onChange={e => setResolution(e.target.value)} /></label>}{next && <button disabled={busy} onClick={() => void advance()}>{busy ? 'Saving…' : `Move to ${next.replaceAll('_', ' ')}`}</button>}</section><h2>Incident history</h2><ol className="history">{incident.history.map((event, n) => <li key={n}><strong>{event.action}</strong><small>{date(event.at)} · {event.actor}</small></li>)}</ol></>;
-}
-function Management({ items }: { items: Incident[] }) {
-  return <><div className="page-heading"><div><div className="eyebrow">ADMINISTRATION</div><h1>Management</h1></div></div><section><h2>Team workload</h2>{['tech-app', 'tech-infra'].map(id => <p key={id}>{id}: {items.filter(i => i.assigneeId === id && !['RESOLVED', 'VERIFIED', 'CLOSED'].includes(i.status)).length} active incidents</p>)}</section></>;
+export default function App() {
+  const { user, ready } = useAuth();
+  if (!ready) return <p className="boot" role="status">Loading…</p>;
+  if (!user) return <Login />;
+  return <Shell user={user} />;
 }
 
+function Shell({ user }: { user: User }) {
+  const { signOut } = useAuth();
+  return <>
+    <header>
+      <div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div>
+      <div className="header-actions">
+        <Notifications />
+        <span className="who">{user.name}<small>{user.role === 'Manager' ? 'IT Manager' : user.role}</small></span>
+        <button className="header-button" onClick={() => void signOut()}>Sign out</button>
+      </div>
+    </header>
+    <nav aria-label="Main navigation">
+      <div className="nav-label">SERVICE OPERATIONS</div>
+      <NavLink to="/" end>Overview</NavLink>
+      <NavLink to="/incidents" end>{user.role === 'Technician' ? 'My assignments' : user.role === 'Employee' ? 'My incidents' : 'Incidents'}</NavLink>
+      {user.role === 'Employee' && <NavLink to="/incidents/new">Report incident</NavLink>}
+      {user.role === 'Manager' && <NavLink to="/management">Management</NavLink>}
+      <div className="nav-bottom">I-ITSM<br /><span>Internal service management</span></div>
+    </nav>
+    <main>
+      <Routes>
+        <Route path="/" element={<Overview user={user} />} />
+        <Route path="/incidents" element={<IncidentList user={user} />} />
+        <Route path="/incidents/new" element={user.role === 'Employee' ? <ReportIncident /> : <p>Only employees report incidents.</p>} />
+        <Route path="/incidents/:id" element={<IncidentDetail user={user} />} />
+        <Route path="/management" element={user.role === 'Manager' ? <Management /> : <p>This screen is for the IT manager.</p>} />
+        <Route path="*" element={<><h1>Page not found</h1><Link to="/">Return to overview</Link></>} />
+      </Routes>
+    </main>
+    <footer>Bharat Rail · IT Service Management</footer>
+  </>;
+}

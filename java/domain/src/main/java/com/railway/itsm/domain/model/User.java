@@ -6,9 +6,13 @@ public abstract class User {
     private final String name;
     private final String email;
     protected User(String name, String email) {
-        if (name == null || name.isBlank() || email == null || !email.contains("@"))
-            throw new IllegalArgumentException("Valid name/email required");
-        this.id=UUID.randomUUID(); this.name=name; this.email=email;
+        this(UUID.randomUUID(), name, email);
+    }
+    /** Restores a user loaded from storage with its existing identity. */
+    protected User(UUID id, String name, String email) {
+        if (id == null || name == null || name.isBlank() || email == null || !email.contains("@"))
+            throw new IllegalArgumentException("Valid id/name/email required");
+        this.id=id; this.name=name; this.email=email;
     }
     public UUID getId(){return id;}
     public String getName(){return name;}

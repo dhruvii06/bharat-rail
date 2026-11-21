@@ -13,6 +13,13 @@ public final class Technician extends User {
         if(skills==null || skills.isEmpty() || capacity<1) throw new IllegalArgumentException("Skills and positive capacity required");
         this.skills=Set.copyOf(skills); this.maxConcurrentIncidents=capacity;
     }
+    /** Restores a technician loaded from storage, including current workload and availability. */
+    public Technician(java.util.UUID id,String name,String email,Set<Skill> skills,int capacity,int activeIncidents,boolean available){
+        super(id,name,email);
+        if(skills==null || skills.isEmpty() || capacity<1 || activeIncidents<0) throw new IllegalArgumentException("Skills, positive capacity and nonnegative workload required");
+        this.skills=Set.copyOf(skills); this.maxConcurrentIncidents=capacity;
+        this.activeIncidents=activeIncidents; this.available=available;
+    }
     @Override public String getRole(){return "TECHNICIAN";}
     public Set<Skill> getSkills(){return skills;}
     public boolean isAvailable(){return available && activeIncidents<maxConcurrentIncidents;}
