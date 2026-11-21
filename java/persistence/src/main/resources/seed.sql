@@ -12,10 +12,10 @@ INSERT INTO it_services (service_name, category, business_criticality) VALUES
 ('E_CATERING_PORTAL', 'APPLICATION', 'MEDIUM');
 
 INSERT INTO users (full_name, email, password_hash, role, department) VALUES
-('Rajesh Sharma', 'rajesh.admin@irctc.co.in', 'hash_admin123', 'ADMIN', 'IT Operations'),
-('Ananya Verma', 'ananya.tech@irctc.co.in', 'hash_tech123', 'TECHNICIAN', 'Payment Systems'),
-('Vikram Singh', 'vikram.tech@irctc.co.in', 'hash_tech123', 'TECHNICIAN', 'Database Admin'),
-('Priya Nair', 'priya.emp@irctc.co.in', 'hash_emp123', 'EMPLOYEE', 'Customer Support');
+('Demo Admin One', 'admin1@demo.local', 'hash_admin123', 'ADMIN', 'IT Operations'),
+('Demo Tech Payment', 'tech.payment@demo.local', 'hash_tech123', 'TECHNICIAN', 'Payment Systems'),
+('Demo Tech Database', 'tech.database@demo.local', 'hash_tech123', 'TECHNICIAN', 'Database Admin'),
+('Demo Support Agent', 'support1@demo.local', 'hash_emp123', 'EMPLOYEE', 'Customer Support');
 
 INSERT INTO technician_details (technician_id, skill_category, current_workload, experience_years, is_available) VALUES
 (2, 'PAYMENT', 1, 6, TRUE),
@@ -28,4 +28,4 @@ INSERT INTO incidents (incident_id, reporter_id, service_id, category, title, de
 INSERT INTO audit_logs (incident_id, performed_by, action, previous_state, new_state, description) VALUES
 ('INC-1001', 4, 'INCIDENT_CREATED', NULL, 'NEW', 'Reported UPI failure during Tatkal window'),
 ('INC-1001', 1, 'PRIORITY_ASSIGNED', 'NEW', 'CLASSIFIED', 'Auto-escalated to P1 due to Tatkal window + Payment impact'),
-('INC-1001', 1, 'TECHNICIAN_ASSIGNED', 'CLASSIFIED', 'ASSIGNED', 'Assigned to Payment Specialist Ananya Verma');
+('INC-1001', 1, 'TECHNICIAN_ASSIGNED', 'CLASSIFIED', 'ASSIGNED', 'Assigned to Payment Specialist Demo Tech Payment');
