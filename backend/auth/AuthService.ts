@@ -1,11 +1,11 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { Role } from '../../shared/domain.ts';
-import { InvalidCredentialsError, TooManyRequestsError, UnauthenticatedError } from '../errors.ts';
+import { InvalidCredentialsError, TooManyRequestsError, UnauthenticatedError, ValidationError } from '../errors.ts';
 import type { SessionRepository, UserRecord, UserRepository } from '../repositories/types.ts';
 import { burnPasswordCheck, hashPassword, verifyPassword } from './passwords.ts';
 
 /** What the API returns about a user. Never includes the password hash. */
-export interface PublicUser { id: string; name: string; email: string; role: Role; isTeamLead: boolean }
+export interface PublicUser { id: string; name: string; email: string; role: Role; isTeamLead: boolean; mustChangePassword: boolean }
 
 export interface AuthContext { user: PublicUser; tokenHash: string }
 
@@ -19,7 +19,7 @@ export interface AuthOptions {
 }
 
 export function toPublicUser(u: UserRecord): PublicUser {
-  return { id: u.id, name: u.name, email: u.email, role: u.role, isTeamLead: u.isTeamLead };
+  return { id: u.id, name: u.name, email: u.email, role: u.role, isTeamLead: u.isTeamLead, mustChangePassword: u.mustChangePassword ?? false };
 }
 
 export function hashToken(token: string): string {
@@ -46,10 +46,13 @@ export class AuthService {
     this.now = opts.now ?? (() => new Date());
   }
 
-  /** Self-registration is for employees only. Technicians and managers are created by a manager. */
+  /**
+   * Self-registration is for members of the public, who become Passengers. Employee, technician and
+   * manager accounts are created by the IT manager (routes/adminUsers.ts).
+   */
   async register(input: { name: string; email: string; password: string }): Promise<PublicUser> {
     const user = await this.users.create({
-      name: input.name, email: input.email, role: 'Employee',
+      name: input.name, email: input.email, role: 'Passenger', department: 'Public',
       passwordHash: await hashPassword(input.password), isTeamLead: false, active: true
     });
     return toPublicUser(user);
@@ -89,6 +92,16 @@ export class AuthService {
       throw new UnauthenticatedError('This account is no longer active.');
     }
     return { user: toPublicUser(user), tokenHash };
+  }
+
+  /** Changes the signed-in user's password after checking the current one; clears the must-change flag. */
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<PublicUser> {
+    const user = await this.users.findById(userId);
+    if (!user || !user.active) throw new UnauthenticatedError();
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) throw new ValidationError({ currentPassword: 'This is not your current password.' });
+    if (currentPassword === newPassword) throw new ValidationError({ newPassword: 'Choose a password different from the current one.' });
+    await this.users.setPassword(userId, await hashPassword(newPassword));
+    return toPublicUser({ ...user, mustChangePassword: false });
   }
 
   async logout(tokenHash: string): Promise<void> {

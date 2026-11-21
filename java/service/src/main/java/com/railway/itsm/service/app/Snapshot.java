@@ -13,6 +13,8 @@ import com.railway.itsm.domain.model.SLAPolicy;
 import java.time.Duration;
 import com.railway.itsm.domain.model.Administrator;
 import com.railway.itsm.domain.model.Employee;
+import com.railway.itsm.domain.model.Passenger;
+import com.railway.itsm.domain.model.Reporter;
 import com.railway.itsm.domain.model.Incident;
 import com.railway.itsm.domain.model.RailwayService;
 import com.railway.itsm.domain.model.Technician;
@@ -85,9 +87,11 @@ public final class Snapshot {
 
     // ---- domain object factories ----
 
-    public Employee employee(long id) {
+    /** The reporting user as the right domain type: a Passenger for public accounts, otherwise an Employee. */
+    public Reporter reporter(long id) {
         com.irctc.itsm.model.User u = require(id);
-        return new Employee(Ids.user(id), u.getFullName(), u.getEmail());
+        return u.getRole() == Role.PASSENGER ? new Passenger(Ids.user(id), u.getFullName(), u.getEmail())
+                : new Employee(Ids.user(id), u.getFullName(), u.getEmail());
     }
 
     public Administrator administrator(long id) {
@@ -125,7 +129,7 @@ public final class Snapshot {
         IncidentCategory category = Mapping.category(dto.getCategory());
         Priority priority = dto.getPriority() == null ? null : Mapping.priority(dto.getPriority());
         return Incident.restore(Ids.incident(dto.getIncidentId()), dto.getTitle(), dto.getDescription(),
-                employee(dto.getReporterId()), service(dto.getServiceId()), category,
+                reporter(dto.getReporterId()), service(dto.getServiceId()), category,
                 Mapping.impact(dto.getImpact()), Mapping.urgency(dto.getUrgency()), affectedUsers(dto.getIncidentId()),
                 category == IncidentCategory.SECURITY, dto.isTatkalWindow(), Mapping.instant(dto.getCreatedAt()),
                 status, priority, assignee, acknowledgedAt(dto.getIncidentId()), resolvedAt(dto.getIncidentId()), null,

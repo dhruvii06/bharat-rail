@@ -14,6 +14,20 @@ export function requireAuth(auth: AuthService): RequestHandler {
   };
 }
 
+/**
+ * Accounts created by the IT manager carry a temporary password. Until it is changed, only the
+ * /auth endpoints (me, change-password, logout) work; everything else answers 403 PASSWORD_CHANGE_REQUIRED.
+ */
+export const requireCurrentPassword: RequestHandler = (_req, res, next) => {
+  if (authOf(res).user.mustChangePassword) throw new PasswordChangeRequiredError();
+  next();
+};
+
+class PasswordChangeRequiredError extends ForbiddenError {
+  readonly code = 'PASSWORD_CHANGE_REQUIRED';
+  constructor() { super('Change your temporary password before continuing.'); }
+}
+
 /** Use after requireAuth. Example: router.post('/assignment', requireRole('Manager'), handler) */
 export function requireRole(...roles: Role[]): RequestHandler {
   return (_req, res, next) => {

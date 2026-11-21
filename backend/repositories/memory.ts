@@ -26,6 +26,11 @@ export class InMemoryUserRepository implements UserRepository, UserDirectory {
 
   async list() { return [...this.byId.values()]; }
 
+  async setPassword(id: string, passwordHash: string) {
+    const user = this.byId.get(id);
+    if (user) this.byId.set(id, { ...user, passwordHash, mustChangePassword: false });
+  }
+
   async update(id: string, patch: UserPatch) {
     const user = this.byId.get(id);
     if (!user) return undefined;

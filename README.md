@@ -42,6 +42,8 @@ You need Node.js 22.16+, JDK 21 + Maven, and PostgreSQL (Docker or a local insta
    npm run dev        # React UI; open the URL Vite prints
    ```
 
+**Who can sign in:** members of the public create a **Passenger** account on the login page to report problems and follow them. Employee, technician and IT manager accounts are created by the IT manager (Settings → Users) with a temporary password that must be changed at first sign-in.
+
 On first start in development the API gives every seeded account the demo password from `backend/seed/demoUsers.ts` (or `DEMO_PASSWORD`). The login page lists the demo accounts.
 
 ## Demo workflows

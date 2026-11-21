@@ -1,6 +1,6 @@
 import express, { type Express } from 'express';
 import { AuthService } from './auth/AuthService.ts';
-import { requireAuth } from './auth/middleware.ts';
+import { requireAuth, requireCurrentPassword } from './auth/middleware.ts';
 import { errorHandler, notFound } from './http/errorHandler.ts';
 import { IncidentServiceClient } from './http/incidentService.ts';
 import type { SessionRepository, UserDirectory, UserRepository } from './repositories/types.ts';
@@ -37,7 +37,7 @@ export function createApp(deps: AppDeps): Express {
   const api = express.Router();
   api.get('/health', (_req, res) => { res.json({ status: 'ok', time: new Date().toISOString() }); });
   api.use('/auth', authRoutes(auth));
-  api.use(requireAuth(auth), adminUserRoutes(deps.users, deps.users, incidents), incidentRoutes(incidents), plannedRoutes());
+  api.use(requireAuth(auth), requireCurrentPassword, adminUserRoutes(deps.users, deps.users, incidents), incidentRoutes(incidents), plannedRoutes());
 
   app.use('/api/v1', api);
   app.use(notFound);

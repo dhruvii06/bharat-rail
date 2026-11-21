@@ -6,7 +6,7 @@ import { BodyValidator } from '../http/validate.ts';
 export function authRoutes(auth: AuthService): Router {
   const router = Router();
 
-  // POST /auth/register  {name, email, password} -> 201 {user}
+  // POST /auth/register  {name, email, password} -> 201 {user}. Creates a Passenger account.
   router.post('/register', async (req, res) => {
     const v = new BodyValidator(req.body);
     const name = v.string('name', { min: 2, max: 80 });
@@ -30,6 +30,16 @@ export function authRoutes(auth: AuthService): Router {
   router.post('/logout', requireAuth(auth), async (_req, res) => {
     await auth.logout(authOf(res).tokenHash);
     res.status(204).end();
+  });
+
+  // POST /auth/change-password {currentPassword, newPassword} -> 200 {user}
+  router.post('/change-password', requireAuth(auth), async (req, res) => {
+    const v = new BodyValidator(req.body);
+    const currentPassword = v.string('currentPassword', { max: 128, trim: false });
+    const newPassword = v.password('newPassword');
+    v.done();
+    const user = await auth.changePassword(authOf(res).user.id, currentPassword, newPassword);
+    res.json({ user });
   });
 
   // GET /auth/me -> 200 {user}

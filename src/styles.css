@@ -110,3 +110,5 @@ td .inline-input{display:inline-block;width:auto}
 .impact-bottom .warning-box{line-height:1.6}
 @media(max-width:950px){.impact-bottom{grid-template-columns:1fr}.impact-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){.impact-controls{grid-template-columns:1fr}.impact-graph{display:flex;flex-direction:column;gap:8px}.impact-graph-col{width:100%}.impact-graph-arrow{padding:0 0 0 10px;transform:rotate(90deg)}.impact-node{min-height:0}.impact-demo-pill{font-size:9px}}
+.who-link{color:#a9b6c6;text-decoration:underline}
+.who-link:hover{color:white}

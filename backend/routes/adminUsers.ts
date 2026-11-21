@@ -11,7 +11,7 @@ import type { UserDirectory, UserRecord, UserRepository } from '../repositories/
 // IT manager: user and technician accounts. Node owns accounts because it owns passwords;
 // a technician's skill profile lives with the incident data, so it is saved through the Java service.
 
-const ROLES: Role[] = ['Employee', 'Technician', 'Manager'];
+const ROLES: Role[] = ['Employee', 'Technician', 'Manager', 'Passenger'];
 
 function view(u: UserRecord) {
   return { ...toPublicUser(u), department: u.department ?? null, active: u.active };
@@ -34,11 +34,13 @@ export function adminUserRoutes(users: UserRepository, directory: UserDirectory,
     const password = v.password('password');
     const department = v.optionalString('department', { max: 50 });
     const role = req.body?.role as Role;
-    if (!ROLES.includes(role)) throw new ValidationError({ role: 'Choose Employee, Technician or Manager.' });
+    if (!ROLES.includes(role)) throw new ValidationError({ role: 'Choose Employee, Technician, Manager or Passenger.' });
     const skill = role === 'Technician' ? v.string('skill', { max: 30 }) : undefined;
     v.done();
 
-    const created = await users.create({ name, email, role, department: department ?? null, passwordHash: await hashPassword(password), isTeamLead: false, active: true });
+    // The password is temporary: the person must choose their own at first sign-in.
+    const created = await users.create({ name, email, role, department: department ?? null, passwordHash: await hashPassword(password),
+      isTeamLead: false, active: true, mustChangePassword: true });
     let warning: string | undefined;
     if (role === 'Technician') {
       const { user } = authOf(res);

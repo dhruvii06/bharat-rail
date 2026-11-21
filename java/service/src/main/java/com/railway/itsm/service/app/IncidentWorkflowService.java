@@ -18,7 +18,7 @@ import com.railway.itsm.domain.enums.Urgency;
 import com.railway.itsm.domain.events.EventPublisher;
 import com.railway.itsm.domain.events.IncidentEvent;
 import com.railway.itsm.domain.model.Administrator;
-import com.railway.itsm.domain.model.Employee;
+import com.railway.itsm.domain.model.Reporter;
 import com.railway.itsm.domain.model.Incident;
 import com.railway.itsm.domain.model.RailwayService;
 import com.railway.itsm.domain.model.SLAEvaluator;
@@ -105,7 +105,7 @@ public class IncidentWorkflowService {
     }
 
     public List<SimilarView> similar(Actor actor, String id) {
-        if (actor.isEmployee()) throw new SecurityException("Only technicians and managers can view similar incidents.");
+        if (actor.isReporter()) throw new SecurityException("Only technicians and managers can view similar incidents.");
         Snapshot s = snapshot();
         return similarTo(s, s.restore(visible(s, actor, id)));
     }
@@ -167,7 +167,7 @@ public class IncidentWorkflowService {
     // =====================================================================================
 
     public synchronized CreatedIncident report(Actor actor, NewIncident in) {
-        actor.require(Actor.EMPLOYEE, "report incidents");
+        actor.requireReporter("report incidents");
         String title = text(in.title(), "title", 5, 120);
         String description = text(in.description(), "description", 10, 4000);
         if (in.serviceId() == null) throw new IllegalArgumentException("Choose the affected service.");
@@ -179,7 +179,7 @@ public class IncidentWorkflowService {
 
         Snapshot s = snapshot();
         Instant now = clock.instant();
-        Employee reporter = s.employee(actor.userId());
+        Reporter reporter = s.reporter(actor.userId());
         RailwayService service = s.service(in.serviceId());
         boolean tatkal = Boolean.TRUE.equals(in.tatkalWindow()) || TatkalWindow.contains(now);
 
@@ -272,8 +272,8 @@ public class IncidentWorkflowService {
                 publish(id, "RESOLVED", id + " resolved: " + fix);
             }
             case "VERIFY" -> {
-                actor.require(Actor.EMPLOYEE, "verify resolutions");
-                incident.verify(s.employee(actor.userId()), now);
+                actor.requireReporter("verify resolutions");
+                incident.verify(s.reporter(actor.userId()), now);
                 incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.VERIFIED, actor.userId());
                 publish(id, "VERIFIED", "Reporter confirmed the fix for " + id);
             }
@@ -305,12 +305,12 @@ public class IncidentWorkflowService {
 
     /** Employee step: the reporter answers the technician's question. */
     public synchronized IncidentView provideInformation(Actor actor, String id, String answer) {
-        actor.require(Actor.EMPLOYEE, "answer information requests");
+        actor.requireReporter("answer information requests");
         Snapshot s = snapshot();
         com.irctc.itsm.model.Incident dto = visible(s, actor, id);
         Incident incident = s.restore(dto);
         String text = text(answer, "answer", 2, 2000);
-        incident.provideInformation(s.employee(actor.userId()), text, clock.instant());
+        incident.provideInformation(s.reporter(actor.userId()), text, clock.instant());
         queries.clearInfoRequest(id);
         audit.save(new AuditLog(id, actor.userId(), "INFO_PROVIDED", dto.getStatus().name(), dto.getStatus().name(), text));
         publish(id, "INFO_PROVIDED", "The reporter answered the question on " + id + ": " + text);
@@ -327,7 +327,7 @@ public class IncidentWorkflowService {
     }
 
     public synchronized IncidentView feedback(Actor actor, String id, Integer rating) {
-        actor.require(Actor.EMPLOYEE, "rate resolutions");
+        actor.requireReporter("rate resolutions");
         Snapshot s = snapshot();
         com.irctc.itsm.model.Incident dto = visible(s, actor, id);
         if (!FINISHED.contains(dto.getStatus().name())) throw new IllegalStateException("Feedback is possible once the incident is resolved.");
@@ -494,7 +494,7 @@ public class IncidentWorkflowService {
 
     private boolean canSee(Actor actor, com.irctc.itsm.model.Incident dto) {
         if (actor.isAdmin()) return true;
-        if (actor.isEmployee()) return Objects.equals(dto.getReporterId(), actor.userId());
+        if (actor.isReporter()) return Objects.equals(dto.getReporterId(), actor.userId());
         return Objects.equals(dto.getAssignedTechnicianId(), actor.userId());
     }
 
@@ -536,7 +536,7 @@ public class IncidentWorkflowService {
                     a.getPerformedByUserId() == null ? "System" : s.userName(a.getPerformedByUserId()), a.getAction(),
                     a.getPreviousState(), a.getNewState(), a.getDescription())).toList();
             actions = allowedActions(actor, dto, resolution, incident.isAwaitingInformation());
-            similar = actor.isEmployee() ? List.of() : similarTo(s, incident);
+            similar = actor.isReporter() ? List.of() : similarTo(s, incident);
         }
         return new IncidentView(id, dto.getTitle(), dto.getDescription(), dto.getCategory(), dto.getServiceId(),
                 service == null ? null : service.getServiceName(), Mapping.score(dto.getImpact()), Mapping.score(dto.getUrgency()),
@@ -565,7 +565,7 @@ public class IncidentWorkflowService {
             }
             if (!waiting && (status.equals("ACKNOWLEDGED") || status.equals("IN_PROGRESS"))) actions.add("REQUEST_INFO");
         }
-        if (actor.isEmployee() && Objects.equals(dto.getReporterId(), actor.userId())) {
+        if (actor.isReporter() && Objects.equals(dto.getReporterId(), actor.userId())) {
             if (waiting) actions.add("PROVIDE_INFO");
             if (status.equals("RESOLVED")) actions.add("VERIFY");
             if (FINISHED.contains(status) && resolution != null && resolution.feedback() == null) actions.add("FEEDBACK");

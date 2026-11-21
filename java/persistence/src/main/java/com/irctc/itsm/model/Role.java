@@ -3,5 +3,6 @@ package com.irctc.itsm.model;
 public enum Role {
     EMPLOYEE,
     TECHNICIAN,
-    ADMIN
+    ADMIN,
+    PASSENGER   // member of the public who self-registered to report incidents
 }

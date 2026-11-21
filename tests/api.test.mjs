@@ -19,7 +19,7 @@ async function call(method, path, { body, token, raw } = {}) {
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
-const login = async email => (await call('POST', '/auth/login', { body: { email, password: PASSWORD } })).body.token;
+const login = async (email, password = PASSWORD) => (await call('POST', '/auth/login', { body: { email, password } })).body.token;
 
 before(async () => {
   const users = new InMemoryUserRepository();
@@ -62,17 +62,18 @@ describe('passwords', () => {
 describe('auth API', () => {
   test('health check is public', async () => assert.equal((await call('GET', '/health')).status, 200));
 
-  test('employee can register and the response hides the password hash', async () => {
+  test('self-registration creates a Passenger and hides the password hash', async () => {
     const r = await call('POST', '/auth/register', { body: { name: 'New Person', email: 'New@Test.local', password: 'Passw0rdOK' } });
     assert.equal(r.status, 201);
-    assert.deepEqual(Object.keys(r.body.user).sort(), ['email', 'id', 'isTeamLead', 'name', 'role']);
-    assert.equal(r.body.user.role, 'Employee');
+    assert.deepEqual(Object.keys(r.body.user).sort(), ['email', 'id', 'isTeamLead', 'mustChangePassword', 'name', 'role']);
+    assert.equal(r.body.user.role, 'Passenger');
+    assert.equal(r.body.user.mustChangePassword, false);
     assert.equal(r.body.user.email, 'new@test.local');
   });
 
-  test('registration ignores a client-supplied role', async () => {
-    const r = await call('POST', '/auth/register', { body: { name: 'Sneaky', email: 'sneaky@test.local', password: 'Passw0rdOK', role: 'Manager' } });
-    assert.equal(r.body.user.role, 'Employee');
+  test('registration ignores a client-supplied role (cannot self-register as staff)', async () => {
+    const r = await call('POST', '/auth/register', { body: { name: 'Sneaky', email: 'sneaky@test.local', password: 'Passw0rdOK', role: 'Employee' } });
+    assert.equal(r.body.user.role, 'Passenger');
   });
 
   test('duplicate email returns 409', async () => {
@@ -306,5 +307,49 @@ describe('role gates on admin settings and the information step', () => {
       assert.equal(lastForwarded.url, path);
       assert.equal(lastForwarded.headers['x-actor-role'], 'ADMIN');
     }
+  });
+});
+
+describe('passengers and first-login password change', () => {
+  test('a passenger can report and answer, but not use staff screens', async () => {
+    await call('POST', '/auth/register', { body: { name: 'Rider One', email: 'rider@test.local', password: 'Rider2026x' } });
+    const token = await login('rider@test.local', 'Rider2026x');
+    const r = await call('POST', '/incidents', { token, body: { title: 'App crashes on UPI', serviceId: 2 } });
+    assert.equal(r.status, 201);
+    assert.equal(lastForwarded.headers['x-actor-role'], 'PASSENGER');
+    assert.equal((await call('POST', '/incidents/INC-1/info-response', { token, body: { answer: 'Android 14' } })).status, 201);
+    assert.equal((await call('GET', '/technicians', { token })).status, 403);
+    assert.equal((await call('GET', '/admin/users', { token })).status, 403);
+    assert.equal((await call('POST', '/incidents/INC-1/info-request', { token, body: { question: 'x' } })).status, 403);
+  });
+
+  test('an admin-created account must change its temporary password before anything else', async () => {
+    const mgr = await login('mgr@test.local');
+    const created = await call('POST', '/admin/users', { token: mgr, body: { name: 'New Clerk', email: 'clerk@test.local', password: 'Temp2026x', role: 'Employee' } });
+    assert.equal(created.body.user.mustChangePassword, true);
+    const first = await call('POST', '/auth/login', { body: { email: 'clerk@test.local', password: 'Temp2026x' } });
+    assert.equal(first.body.user.mustChangePassword, true);
+    const token = first.body.token;
+    const blocked = await call('GET', '/incidents', { token });
+    assert.equal(blocked.status, 403);
+    assert.equal(blocked.body.error.code, 'PASSWORD_CHANGE_REQUIRED');
+    assert.equal((await call('GET', '/auth/me', { token })).status, 200);
+    let r = await call('POST', '/auth/change-password', { token, body: { currentPassword: 'wrong-one', newPassword: 'MyOwn2026x' } });
+    assert.equal(r.status, 422);
+    assert.ok(r.body.error.fieldErrors.currentPassword);
+    r = await call('POST', '/auth/change-password', { token, body: { currentPassword: 'Temp2026x', newPassword: 'Temp2026x' } });
+    assert.ok(r.body.error.fieldErrors.newPassword);
+    r = await call('POST', '/auth/change-password', { token, body: { currentPassword: 'Temp2026x', newPassword: 'short' } });
+    assert.ok(r.body.error.fieldErrors.newPassword);
+    r = await call('POST', '/auth/change-password', { token, body: { currentPassword: 'Temp2026x', newPassword: 'MyOwn2026x' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.user.mustChangePassword, false);
+    assert.equal((await call('GET', '/incidents', { token })).status, 200);
+    assert.equal((await call('POST', '/auth/login', { body: { email: 'clerk@test.local', password: 'Temp2026x' } })).status, 401);
+    assert.equal((await call('POST', '/auth/login', { body: { email: 'clerk@test.local', password: 'MyOwn2026x' } })).status, 200);
+  });
+
+  test('change-password needs a signed-in user', async () => {
+    assert.equal((await call('POST', '/auth/change-password', { body: { currentPassword: 'a', newPassword: 'Passw0rdOK' } })).status, 401);
   });
 });

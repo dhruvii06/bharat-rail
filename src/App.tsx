@@ -1,8 +1,9 @@
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
-import type { User } from '../shared/domain';
+import { reporterRoles, type User } from '../shared/domain';
 import { useAuth } from './auth';
 import { Notifications } from './components/Notifications';
 import { Admin } from './pages/Admin';
+import { ChangePassword } from './pages/ChangePassword';
 import { IncidentDetail } from './pages/IncidentDetail';
 import { IncidentList } from './pages/IncidentList';
 import { ImpactSimulator } from './pages/ImpactSimulator';
@@ -15,25 +16,29 @@ export default function App() {
   const { user, ready } = useAuth();
   if (!ready) return <p className="boot" role="status">Loading…</p>;
   if (!user) return <Login />;
+  if (user.mustChangePassword) return <ChangePassword forced />;
   return <Shell user={user} />;
 }
 
+const roleLabel = (role: User['role']) => role === 'Manager' ? 'IT Manager' : role;
+
 function Shell({ user }: { user: User }) {
   const { signOut } = useAuth();
+  const reporter = reporterRoles.includes(user.role);
   return <>
     <header>
       <div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div>
       <div className="header-actions">
         <Notifications />
-        <span className="who">{user.name}<small>{user.role === 'Manager' ? 'IT Manager' : user.role}</small></span>
+        <span className="who">{user.name}<small>{roleLabel(user.role)} · <Link to="/account" className="who-link">Change password</Link></small></span>
         <button className="header-button" onClick={() => void signOut()}>Sign out</button>
       </div>
     </header>
     <nav aria-label="Main navigation">
       <div className="nav-label">SERVICE OPERATIONS</div>
       <NavLink to="/" end>Overview</NavLink>
-      <NavLink to="/incidents" end>{user.role === 'Technician' ? 'My assignments' : user.role === 'Employee' ? 'My incidents' : 'Incidents'}</NavLink>
-      {user.role === 'Employee' && <NavLink to="/incidents/new">Report incident</NavLink>}
+      <NavLink to="/incidents" end>{user.role === 'Technician' ? 'My assignments' : reporter ? 'My incidents' : 'Incidents'}</NavLink>
+      {reporter && <NavLink to="/incidents/new">Report incident</NavLink>}
       {user.role === 'Manager' && <NavLink to="/management">Management</NavLink>}
       {user.role === 'Manager' && <NavLink to="/admin">Settings</NavLink>}
       {user.role === 'Manager' && <NavLink to="/impact-simulator">Impact simulator</NavLink>}
@@ -43,7 +48,8 @@ function Shell({ user }: { user: User }) {
       <Routes>
         <Route path="/" element={<Overview user={user} />} />
         <Route path="/incidents" element={<IncidentList user={user} />} />
-        <Route path="/incidents/new" element={user.role === 'Employee' ? <ReportIncident /> : <p>Only employees report incidents.</p>} />
+        <Route path="/incidents/new" element={reporter ? <ReportIncident /> : <p>Incidents are reported by employees and passengers.</p>} />
+        <Route path="/account" element={<ChangePassword />} />
         <Route path="/incidents/:id" element={<IncidentDetail user={user} />} />
         <Route path="/management" element={user.role === 'Manager' ? <Management /> : <p>This screen is for the IT manager.</p>} />
         <Route path="/admin" element={user.role === 'Manager' ? <Admin /> : <p>This screen is for the IT manager.</p>} />
