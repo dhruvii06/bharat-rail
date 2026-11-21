@@ -11,7 +11,7 @@ npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. `npm run build` checks TypeScript and creates `dist/`; `npm test` runs domain tests. Optional: `npm run api` starts the backend health endpoint on port 3001. It does not provide the incident API yet.
+Open the local URL printed by Vite. `npm run build` checks TypeScript and creates `dist/`; `npm test` runs domain and API tests. `npm run api` starts the backend on port 3001 (login and registration work; incident endpoints return 501 until Phase 2). With both running, Vite forwards `/api` to the backend. See [API](docs/API.md) for demo accounts.
 
 ## Demonstrate the basic flow
 
@@ -31,13 +31,19 @@ src/
   styles.css            Replaceable wireframe styling
   data/api.ts           API interface, mock adapter, assignment strategies
 shared/domain.ts        Incident contracts, priority policy and transitions
-backend/server.mjs      Health-check starter for the backend owner
+backend/
+  server.ts             Composition root: picks repositories, seeds demo users, starts Express
+  app.ts                Express app: security headers, JSON parsing, routes, error handling
+  errors.ts             AppError hierarchy mapped to HTTP status codes
+  auth/                 Password hashing, sessions, login lockout, role guards
+  repositories/         Repository interfaces and in-memory versions
+  routes/               Auth routes and role-guarded planned endpoints
 docs/                   Architecture, API proposal and delivery checklist
 tests/                  Business-rule tests
 .github/workflows/      Automated tests and production build
 ```
 
-Frontend uses React, TypeScript, React Router and Vite. Business rules and the data adapter are separate from rendering so the UI can change next. The backend technology is still a team decision; the small Node health server does not lock that choice. PostgreSQL is proposed in the architecture, not installed or integrated.
+Frontend uses React, TypeScript, React Router and Vite. Business rules and the data adapter are separate from rendering so the UI can change next. The backend is Node.js with Express 5 and TypeScript, run through Node's built-in type stripping. Storage is in memory for now; SQLite is planned behind the repository interfaces.
 
 ## Prototype boundaries
 
