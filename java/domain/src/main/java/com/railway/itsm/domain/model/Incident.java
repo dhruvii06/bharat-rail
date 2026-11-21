@@ -8,7 +8,7 @@ public final class Incident {
     private final UUID id;
     private final String title;
     private final String description;
-    private final Employee reporter;
+    private final Reporter reporter;
     private final RailwayService affectedService;
     private final IncidentCategory category;
     private final Impact impact;
@@ -27,14 +27,14 @@ public final class Incident {
     private Resolution resolution;
     private String informationRequest;
     private Instant informationRequestedAt;
-    public Incident(String title,String description,Employee reporter,RailwayService affectedService,
+    public Incident(String title,String description,Reporter reporter,RailwayService affectedService,
                     IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                     boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
         this(UUID.randomUUID(),title,description,reporter,affectedService,category,impact,urgency,
              affectedUsers,criticalSecurityIncident,peakTatkalIncident,createdAt);
         record(reporter,"CREATED",IncidentStatus.NEW,IncidentStatus.NEW,"Incident submitted",createdAt);
     }
-    private Incident(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+    private Incident(UUID id,String title,String description,Reporter reporter,RailwayService affectedService,
                     IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                     boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
         if(title==null||title.isBlank()||description==null||description.isBlank()||affectedUsers<0)
@@ -50,7 +50,7 @@ public final class Incident {
      * Rebuilds an incident that was saved earlier, in its saved state, so the lifecycle rules
      * can validate the next action. Used by the persistence adapter; records no new audit entry.
      */
-    public static Incident restore(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+    public static Incident restore(UUID id,String title,String description,Reporter reporter,RailwayService affectedService,
                                    IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                                    boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt,
                                    IncidentStatus status,Priority priority,Technician assignedTechnician,
@@ -63,7 +63,7 @@ public final class Incident {
      * Restore variant that also carries the SLA targets the incident was created with (so later policy
      * changes do not move its deadlines) and any open request for information to the reporter.
      */
-    public static Incident restore(UUID id,String title,String description,Employee reporter,RailwayService affectedService,
+    public static Incident restore(UUID id,String title,String description,Reporter reporter,RailwayService affectedService,
                                    IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                                    boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt,
                                    IncidentStatus status,Priority priority,Technician assignedTechnician,
@@ -123,7 +123,7 @@ public final class Incident {
         record(actor,"INFO_REQUESTED",status,status,informationRequest,now);
     }
     /** The reporter answers the open question, which clears it. */
-    public void provideInformation(Employee actor,String answer,Instant now){
+    public void provideInformation(Reporter actor,String answer,Instant now){
         if(actor==null||!reporter.getId().equals(actor.getId())) throw new UnauthorizedIncidentOperationException("Only the reporter can answer the technician's question");
         if(informationRequest==null) throw new InvalidTransitionException("No information has been requested");
         if(answer==null||answer.isBlank()) throw new IllegalArgumentException("An answer is required");
@@ -137,7 +137,7 @@ public final class Incident {
         resolvedAt=now;move(IncidentStatus.RESOLVED,actor,"RESOLVED",summary,now);
         assignedTechnician.finishIncident();
     }
-    public void verify(Employee actor,Instant now){
+    public void verify(Reporter actor,Instant now){
         if(!reporter.getId().equals(actor.getId())) throw new UnauthorizedIncidentOperationException("Only reporter may verify");
         require(IncidentStatus.RESOLVED);
         move(IncidentStatus.VERIFIED,actor,"VERIFIED","Reporter accepted fix",now);
@@ -163,7 +163,7 @@ public final class Incident {
     public UUID getId(){return id;}
     public String getTitle(){return title;}
     public String getDescription(){return description;}
-    public Employee getReporter(){return reporter;}
+    public Reporter getReporter(){return reporter;}
     public RailwayService getAffectedService(){return affectedService;}
     public IncidentCategory getCategory(){return category;}
     public Impact getImpact(){return impact;}

@@ -13,6 +13,7 @@ export interface UserRecord {
   isTeamLead: boolean;      // technicians only; used by escalation in Phase 3
   active: boolean;          // deactivated accounts cannot sign in
   department?: string | null;
+  mustChangePassword?: boolean;   // set on accounts the IT manager creates with a temporary password
   createdAt: string;        // ISO 8601 UTC
 }
 
@@ -24,6 +25,8 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | undefined>;
   /** Throws ConflictError when the email is already registered. */
   create(user: NewUser): Promise<UserRecord>;
+  /** Stores a new password hash and clears the must-change flag. */
+  setPassword(id: string, passwordHash: string): Promise<void>;
 }
 
 export interface UserPatch { name?: string; department?: string | null; active?: boolean }

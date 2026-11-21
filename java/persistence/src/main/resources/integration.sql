@@ -73,3 +73,16 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 INSERT INTO settings (setting_key, setting_value) VALUES ('default_assignment_strategy', 'skill')
 ON CONFLICT (setting_key) DO NOTHING;
+
+-- ---- Passenger accounts and first-login password change ----
+
+-- Members of the public register as PASSENGER; EMPLOYEE, TECHNICIAN and ADMIN accounts are created by the IT manager.
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('EMPLOYEE', 'TECHNICIAN', 'ADMIN', 'PASSENGER'));
+
+-- Accounts created by the IT manager start with a temporary password that must be changed at first sign-in.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+
+INSERT INTO users (full_name, email, password_hash, role, department) VALUES
+('Demo Passenger', 'passenger@demo.local', 'unset', 'PASSENGER', 'Public')
+ON CONFLICT (email) DO NOTHING;

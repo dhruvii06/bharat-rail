@@ -7,6 +7,7 @@ interface AuthState {
   ready: boolean;
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -25,7 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthState = {
     user, ready,
     async signIn(email, password) { setUser(await api.login(email, password)); },
-    async signOut() { try { await api.logout(); } finally { setUser(null); } }
+    async signOut() { try { await api.logout(); } finally { setUser(null); } },
+    async changePassword(currentPassword, newPassword) { setUser(await api.changePassword(currentPassword, newPassword)); }
   };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

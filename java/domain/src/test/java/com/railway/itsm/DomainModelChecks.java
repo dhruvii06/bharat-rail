@@ -126,6 +126,17 @@ public final class DomainModelChecks {
             new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("B","B","Ops",2,List.of("A"))));
         check(cycleGraph.analyze("A").affected().size()==1,
             "cyclic dependency graph terminates safely");
+        Passenger rider=new Passenger("Rider","rider@example.test");
+        Incident publicReport=new Incident("App crash on payment","The app closes when I pay by UPI",rider,SERVICE,
+            IncidentCategory.APPLICATION,Impact.MEDIUM,Urgency.MEDIUM,1,false,false,START);
+        check(publicReport.getReporter() instanceof Reporter && "PASSENGER".equals(rider.getRole()),"a passenger can report an incident");
+        publicReport.classify(priority.calculate(publicReport),ADMIN,START);
+        Technician appTech=new Technician("App","app@example.test",Set.of(Skill.APPLICATION),3);
+        publicReport.assign(appTech,ADMIN,START);publicReport.acknowledge(appTech,START);publicReport.startInvestigation(appTech,START);
+        publicReport.resolve(appTech,"Fixed the UPI intent handler","Null intent",START.plusSeconds(60));
+        throwsException(UnauthorizedIncidentOperationException.class,()->publicReport.verify(EMP,START.plusSeconds(70)),"staff cannot verify a passenger's incident");
+        publicReport.verify(rider,START.plusSeconds(80));
+        check(publicReport.getStatus()==IncidentStatus.VERIFIED,"the passenger verifies their own incident");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

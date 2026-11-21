@@ -13,7 +13,8 @@ Base `/api/v1` on the Node API (port 3001; the Vite dev server forwards `/api`).
 | Method | Endpoint | Behaviour |
 | --- | --- | --- |
 | GET | `/health` | Public health check |
-| POST | `/auth/register` | `{name, email, password}` → 201 `{user}`. Creates an Employee only; any `role` field is ignored |
+| POST | `/auth/register` | `{name, email, password}` → 201 `{user}`. Public sign-up: always creates a **Passenger**; any `role` field is ignored. Employee, technician and manager accounts are created by the IT manager |
+| POST | `/auth/change-password` | `{currentPassword, newPassword}` → `{user}`. Accounts created by the IT manager start with `mustChangePassword: true`; until changed, every endpoint except `/auth/me`, `/auth/change-password` and `/auth/logout` answers 403 `PASSWORD_CHANGE_REQUIRED` |
 | POST | `/auth/login` | `{email, password}` → `{token, expiresAt, user}`. 8-hour session. 5 failures on one email lock it for 15 min (429) |
 | POST | `/auth/logout` | Revokes the token → 204 |
 | GET | `/auth/me` | `{user}` for the current token |

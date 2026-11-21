@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { finished, type Count, type User } from '../../shared/domain';
+import { finished, reporterRoles, type Count, type User } from '../../shared/domain';
 import { useLoad } from '../auth';
 import { ErrorNote, IncidentRows } from '../components/ui';
 import { api } from '../data/api';
@@ -22,7 +22,7 @@ export function Overview({ user }: { user: User }) {
   return <>
     <div className="page-heading">
       <div><div className="eyebrow">SERVICE OPERATIONS / OVERVIEW</div><h1>{title}</h1></div>
-      {user.role === 'Employee' && <Link className="button-link" to="/incidents/new">Report incident</Link>}
+      {reporterRoles.includes(user.role) && <Link className="button-link" to="/incidents/new">Report incident</Link>}
     </div>
     <ErrorNote message={incidents.error || report.error} onRetry={() => { incidents.reload(); report.reload(); }} />
     <div className="metrics">{metrics.map(([label, value]) => <section key={label}><span>{label}</span><strong>{value}</strong></section>)}</div>

@@ -1,7 +1,9 @@
 // Shared contract between the React frontend and the API. The Java incident service
 // (java/service, Views.java) is the source of truth for incidents; these types mirror its JSON.
 
-export type Role = 'Employee' | 'Technician' | 'Manager';
+export type Role = 'Employee' | 'Technician' | 'Manager' | 'Passenger';
+/** Roles that report incidents, follow their own, answer questions and verify fixes. */
+export const reporterRoles: Role[] = ['Employee', 'Passenger'];
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
@@ -15,7 +17,7 @@ export const slaStates: SlaState[] = ['WITHIN', 'AT_RISK', 'BREACHED', 'MET'];
 export const slaLabel: Record<SlaState, string> = { WITHIN: 'Within target', AT_RISK: 'At risk', BREACHED: 'Breached', MET: 'Met', NONE: '—' };
 export const finished: Status[] = ['RESOLVED', 'VERIFIED', 'CLOSED'];
 
-export interface User { id: string; name: string; email: string; role: Role; isTeamLead: boolean }
+export interface User { id: string; name: string; email: string; role: Role; isTeamLead: boolean; mustChangePassword?: boolean }
 
 export interface IncidentInput {
   title: string; description: string; serviceId: number; category: string;

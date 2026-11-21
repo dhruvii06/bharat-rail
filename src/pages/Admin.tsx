@@ -67,7 +67,7 @@ function Users() {
       <label>Email<input id="new-email" type="email" required value={form.email} onChange={e => set('email', e.target.value)} /></label>
       <label>Temporary password<input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} /></label>
       <label>Role<select id="new-role" value={form.role} onChange={e => set('role', e.target.value as Role)}>
-        <option value="Employee">Employee</option><option value="Technician">Technician</option><option value="Manager">IT Manager</option>
+        <option value="Employee">Employee</option><option value="Technician">Technician</option><option value="Manager">IT Manager</option><option value="Passenger">Passenger</option>
       </select></label>
       <label>Department<input id="new-department" value={form.department} onChange={e => set('department', e.target.value)} /></label>
       {form.role === 'Technician' && <>
@@ -78,6 +78,7 @@ function Users() {
       </>}
       <button disabled={busy}>Create account</button>
     </form>
+    <p className="muted">Share the temporary password with the person yourself. They must choose their own password the first time they sign in.</p>
     {status}
     <h2>Accounts</h2>
     <ErrorNote message={users.error} onRetry={users.reload} />
@@ -85,7 +86,7 @@ function Users() {
       <thead><tr><th>Name</th><th>Role</th><th>Department</th><th>Status</th><th></th></tr></thead>
       <tbody>{users.data?.map(u => <tr key={u.id}>
         <td>{u.name}<small>{u.email}</small></td>
-        <td>{u.role === 'Manager' ? 'IT Manager' : u.role}</td>
+        <td>{u.role === 'Manager' ? 'IT Manager' : u.role}{u.mustChangePassword && <small>Temporary password</small>}</td>
         <td>{u.department ?? '—'}</td>
         <td><span className={u.active ? 'pill' : 'pill off'}>{u.active ? 'Active' : 'Deactivated'}</span></td>
         <td><button className="secondary" disabled={busy} onClick={async () => {

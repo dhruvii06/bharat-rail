@@ -73,6 +73,8 @@ export const api = {
     try { await request('POST', '/auth/logout'); } finally { token = null; writeToken(null); }
   },
   me: async () => (await request<{ user: User }>('GET', '/auth/me')).user,
+  changePassword: async (currentPassword: string, newPassword: string) =>
+    (await request<{ user: User }>('POST', '/auth/change-password', { currentPassword, newPassword })).user,
   register: async (name: string, email: string, password: string) =>
     (await request<{ user: User }>('POST', '/auth/register', { name, email, password })).user,
 

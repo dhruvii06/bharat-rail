@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { Action, Incident, SimilarIncident, User } from '../../shared/domain';
+import { reporterRoles, type Action, type Incident, type SimilarIncident, type User } from '../../shared/domain';
 import { useLoad } from '../auth';
 import { ErrorNote, PriorityBadge, SlaTag, StatusTag, formatDate, humanize } from '../components/ui';
 import { api } from '../data/api';
@@ -40,7 +40,7 @@ export function IncidentDetail({ user }: { user: User }) {
     {duplicates.length > 0 && <div className="warning-box"><strong>Possible duplicates.</strong> These open incidents look similar: {duplicates.map((d, n) => <span key={d.id}>{n > 0 && ', '}<Link to={`/incidents/${d.id}`}>{d.id}</Link> ({d.title})</span>)}.</div>}
 
     {incident.informationRequest && <div className="warning-box" role="status">
-      <strong>{user.role === 'Employee' ? 'The technician needs more information from you.' : 'Waiting for the reporter to answer.'}</strong>
+      <strong>{reporterRoles.includes(user.role) ? 'The technician needs more information from you.' : 'Waiting for the reporter to answer.'}</strong>
       <p className="preserve">{incident.informationRequest}</p>
       <small>Asked {formatDate(incident.informationRequestedAt)}{user.role === 'Technician' && ' · you can resolve once the reporter answers'}</small>
     </div>}
@@ -86,7 +86,7 @@ export function IncidentDetail({ user }: { user: User }) {
         {has('FEEDBACK') && <FeedbackForm busy={busy} onRate={rating => run(() => api.feedback(incident.id, rating))} />}
         {has('CLOSE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'CLOSE'))}>Close incident</button>}
         {has('NOTE') && <NoteForm busy={busy} onNote={text => run(() => api.note(incident.id, text))} />}
-        {user.role !== 'Employee' && incident.similar && incident.similar.length > 0 && <>
+        {!reporterRoles.includes(user.role) && incident.similar && incident.similar.length > 0 && <>
           <h2>Similar open incidents</h2>
           <ul className="similar">{incident.similar.map(s => <li key={s.id}><Link to={`/incidents/${s.id}`}>{s.id}</Link> {s.title} <StatusTag status={s.status} /></li>)}</ul>
         </>}
