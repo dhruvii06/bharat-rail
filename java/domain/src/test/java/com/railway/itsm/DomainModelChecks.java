@@ -69,6 +69,34 @@ public final class DomainModelChecks {
         inc.verify(EMP,START.plusSeconds(700));inc.close(ADMIN,START.plusSeconds(800));
         check(inc.getStatus()==IncidentStatus.CLOSED,"full lifecycle closes");
         check(inc.getAuditTrail().size()==8,"audit records all eight transitions/events");
+        // Boundary regression for the transition-time SLA evaluator used by the live Java service.
+        // Exactly on a deadline is compliant; one second after is a violation.
+        for (long responseSeconds : new long[] {299, 300, 301}) {
+            Incident timed = incident(Impact.HIGH,Urgency.HIGH,false,true);
+            timed.classify(Priority.P1_CRITICAL,ADMIN,START);
+            Technician assigned = new Technician("Timed " + responseSeconds,"timed" + responseSeconds + "@example.test",
+                    Set.of(Skill.PAYMENTS),1);
+            timed.assign(assigned,ADMIN,START);
+            timed.acknowledge(assigned,START.plusSeconds(responseSeconds));
+            check(SLAEvaluator.evaluate(timed,START.plusSeconds(responseSeconds)).responseViolated() == (responseSeconds > 300),
+                    "response SLA boundary at " + responseSeconds + " seconds");
+            timed.startInvestigation(assigned,START.plusSeconds(responseSeconds));
+            timed.resolve(assigned,"Repaired payment callback","Gateway timeout",START.plusSeconds(1801));
+            check(SLAEvaluator.evaluate(timed,START.plusSeconds(1801)).resolutionViolated(),
+                    "late resolution remains detectable after status becomes RESOLVED");
+        }
+        for (long resolutionSeconds : new long[] {1799, 1800, 1801}) {
+            Incident timed = incident(Impact.HIGH,Urgency.HIGH,false,true);
+            timed.classify(Priority.P1_CRITICAL,ADMIN,START);
+            Technician assigned = new Technician("Resolve " + resolutionSeconds,"resolve" + resolutionSeconds + "@example.test",
+                    Set.of(Skill.PAYMENTS),1);
+            timed.assign(assigned,ADMIN,START);
+            timed.acknowledge(assigned,START.plusSeconds(100));
+            timed.startInvestigation(assigned,START.plusSeconds(110));
+            timed.resolve(assigned,"Repaired payment callback","Gateway timeout",START.plusSeconds(resolutionSeconds));
+            check(SLAEvaluator.evaluate(timed,START.plusSeconds(resolutionSeconds)).resolutionViolated() == (resolutionSeconds > 1800),
+                    "resolution SLA boundary at " + resolutionSeconds + " seconds");
+        }
         Incident draft=incident(Impact.LOW,Urgency.LOW,false,false);
         InMemoryIncidentRepository repo=new InMemoryIncidentRepository();repo.save(draft);
         check(repo.findById(draft.getId()).orElseThrow()==draft,"repository readback");
