@@ -134,6 +134,13 @@ public class IncidentWorkflowService {
 
     public List<String> assignmentStrategies() { return assignmentStrategies.keySet().stream().sorted().toList(); }
 
+    /** A technician's own workload: active incidents, capacity, team and whether they can take new work. */
+    public TechnicianView myWorkload(Actor actor) {
+        actor.require(Actor.TECHNICIAN, "view their workload");
+        return technicianViews(snapshot()).stream().filter(t -> t.id() == actor.userId()).findFirst()
+                .orElseThrow(() -> new NotFoundException("No technician profile for this account. Ask the IT manager to set your team."));
+    }
+
     public List<TechnicianView> technicians(Actor actor) {
         actor.require(Actor.ADMIN, "view technicians");
         return technicianViews(snapshot());

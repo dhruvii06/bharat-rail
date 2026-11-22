@@ -67,6 +67,8 @@ The incident page explains each priority. The IT manager can override a priority
 
 Response and resolution targets per priority are set by the IT manager. The defaults are P1 5/30, P2 15/120, P3 60/480 and P4 240/1440 minutes.
 
+**Design decision: SLAs are set per priority, not per service.** The brief's example SLA table is keyed by priority, and the service already shapes the SLA through its business criticality: a critical service raises the priority score, and so gets the tighter targets. Keeping a single table of four policies makes the targets easy to audit and change. Per-service targets could be added later as an SLA policy keyed by service and priority, with the priority-only policy as the fallback; incidents already store the policy they were given.
+
 - Deadlines start when the incident is reported. Changing the priority recalculates them from that time.
 - Every 30 seconds, the SLA monitor:
   - warns 5 minutes before a resolution deadline;
@@ -112,6 +114,10 @@ The IT manager can assign an incident in three ways:
 - **A named technician.**
 
 The default strategy is set in the admin settings. Each category is handled by one team, so a category the IT manager adds is routed with no code change.
+
+**Design decision: the system selects, the IT manager confirms.** Choosing the technician is automated: the strategy picks by skill or load and records why in the history. The assignment happens when the IT manager presses **Assign**, so a person sees every new incident and can override the choice or name a technician. The brief asks the system to "recommend or assign"; assigning automatically on creation would only mean calling the same strategy from the report step.
+
+Technicians see their own workload on **My work overview**: active incidents against capacity (for example 3 / 5), whether they can take new incidents, and how many are waiting to be acknowledged.
 
 ## OOP design
 

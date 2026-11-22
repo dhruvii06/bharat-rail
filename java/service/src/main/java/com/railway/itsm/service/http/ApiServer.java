@@ -88,6 +88,7 @@ public final class ApiServer {
         route("GET", "/categories", 200, r -> workflow.categories());
         route("GET", "/assignment-strategies", 200, r -> workflow.assignmentStrategies());
         route("GET", "/technicians", 200, r -> workflow.technicians(r.actor()));
+        route("GET", "/technicians/me", 200, r -> workflow.myWorkload(r.actor()));
         route("GET", "/notifications", 200, r -> workflow.notifications(r.actor()));
         route("GET", "/notifications/outbox", 200, r -> workflow.emailOutbox(r.actor()));
         route("POST", "/notifications/read-all", 204, r -> { workflow.markAllRead(r.actor()); return null; });

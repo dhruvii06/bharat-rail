@@ -33,7 +33,7 @@ public final class IncidentManagementService {
         Set<String> words=importantWords(incoming.getTitle());
         return repository.findAll().stream().filter(i->!i.getId().equals(incoming.getId()))
           .filter(i->i.getAffectedService().getId().equals(incoming.getAffectedService().getId()))
-          .filter(i->i.getCategory()==incoming.getCategory())
+          .filter(i->i.getCategory().equals(incoming.getCategory()))   // value equality: categories are value objects
           .filter(i->i.getStatus()!=com.railway.itsm.domain.enums.IncidentStatus.CLOSED)
           .filter(i->importantWords(i.getTitle()).stream().anyMatch(words::contains))
           .toList();
