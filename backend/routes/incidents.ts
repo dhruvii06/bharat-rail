@@ -19,7 +19,8 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('get', '/incidents/:id', ALL);                          // detail, history, allowed actions
   route('post', '/incidents/:id/assignment', ['Manager']);      // {strategy: skill|load} or {technicianId}
   route('post', '/incidents/:id/transitions', ALL);             // {action: ACKNOWLEDGE|START|RESOLVE|VERIFY|CLOSE}
-  route('post', '/incidents/:id/notes', ALL);                   // {text}
+  route('post', '/incidents/:id/notes', ALL);                   // {text}: internal staff note (customers get 403 from the service)
+  route('post', '/incidents/:id/messages', ALL);                // {text}: conversation between the reporter and the IT team
   route('post', '/incidents/:id/feedback', REPORTERS);          // {rating: 1-5}
   route('get', '/incidents/:id/similar', ['Technician', 'Manager']);
   route('post', '/incidents/:id/info-request', ['Technician']);  // {question}: assigned technician asks the reporter

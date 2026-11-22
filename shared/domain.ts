@@ -7,7 +7,7 @@ export const reporterRoles: Role[] = ['Employee', 'Customer'];
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
-export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE';
 export type Criticality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export const criticalities: Criticality[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 

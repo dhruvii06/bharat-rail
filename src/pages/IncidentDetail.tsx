@@ -27,16 +27,20 @@ export function IncidentDetail({ user }: { user: User }) {
   const actions = incident.allowedActions ?? [];
   const has = (a: Action) => actions.includes(a);
   const duplicates = flash.duplicates ?? [];
+  const customer = user.role === 'Customer';
+  const conversation = (incident.history ?? []).filter(h => ['MESSAGE', 'INFO_REQUESTED', 'INFO_PROVIDED'].includes(h.action));
 
   return <>
     <Link to="/incidents">← Incident queue</Link>
     <div className="detail-head">
       <h1>{incident.title}</h1>
       <p className="muted">{incident.id} · reported by {incident.reporterName} · {formatDate(incident.createdAt)}</p>
-      <div className="tags"><PriorityBadge priority={incident.priority} /><StatusTag status={incident.status} /><SlaTag sla={incident.sla} />{incident.tatkalWindow && <span className="status-tag">TATKAL WINDOW</span>}</div>
+      <div className="tags">{!customer && <PriorityBadge priority={incident.priority} />}<StatusTag status={incident.status} />{!customer && <SlaTag sla={incident.sla} />}{!customer && incident.tatkalWindow && <span className="status-tag">TATKAL WINDOW</span>}</div>
     </div>
 
-    {flash.justCreated && <p className="notice-box" role="status">Incident created and classified as <strong>{incident.priority}</strong>. The IT manager has been notified.</p>}
+    {flash.justCreated && (customer
+      ? <p className="notice-box" role="status">Thank you, we have received your report. Our IT team will look into it, and you can message them below.</p>
+      : <p className="notice-box" role="status">Incident created and classified as <strong>{incident.priority}</strong>. The IT manager has been notified.</p>)}
     {duplicates.length > 0 && <div className="warning-box"><strong>Possible duplicates.</strong> These open incidents look similar: {duplicates.map((d, n) => <span key={d.id}>{n > 0 && ', '}<Link to={`/incidents/${d.id}`}>{d.id}</Link> ({d.title})</span>)}.</div>}
 
     {incident.informationRequest && <div className="warning-box" role="status">
@@ -49,7 +53,12 @@ export function IncidentDetail({ user }: { user: User }) {
       <section className="facts">
         <h2>Details</h2>
         <p className="preserve">{incident.description}</p>
-        <dl>
+        {customer ? <dl>
+          <Fact label="Service">{humanize(incident.serviceName)}</Fact>
+          <Fact label="Reported">{formatDate(incident.createdAt)}</Fact>
+          <Fact label="Handled by">{incident.assigneeName ?? 'Our IT team will assign someone shortly'}</Fact>
+          {incident.resolvedAt && <Fact label="Resolved">{formatDate(incident.resolvedAt)}</Fact>}
+        </dl> : <dl>
           <Fact label="Service">{incident.serviceName} · criticality {incident.criticality}/3</Fact>
           <Fact label="Category">{humanize(incident.category)}</Fact>
           <Fact label="Impact / urgency">{levelName[incident.impact]} / {levelName[incident.urgency]}</Fact>
@@ -58,12 +67,12 @@ export function IncidentDetail({ user }: { user: User }) {
           <Fact label="Assigned to">{incident.assigneeName ?? 'Awaiting assignment'}</Fact>
           <Fact label="Response due">{formatDate(incident.responseDueAt)}{incident.acknowledgedAt && <small>Acknowledged {formatDate(incident.acknowledgedAt)}</small>}</Fact>
           <Fact label="Resolution due">{formatDate(incident.resolutionDueAt)}{incident.resolvedAt && <small>Resolved {formatDate(incident.resolvedAt)}</small>}</Fact>
-        </dl>
+        </dl>}
         {incident.resolution && <>
           <h2>Resolution</h2>
           <dl>
             <Fact label="Fix">{incident.resolution.summary}</Fact>
-            <Fact label="Root cause">{incident.resolution.rootCause}</Fact>
+            {!customer && <Fact label="Root cause">{incident.resolution.rootCause}</Fact>}
             <Fact label="Resolved by">{incident.resolution.technicianName ?? '—'}</Fact>
             <Fact label="Reporter rating">{incident.resolution.feedback ? `${incident.resolution.feedback} / 5` : 'Not rated yet'}</Fact>
           </dl>
@@ -73,7 +82,7 @@ export function IncidentDetail({ user }: { user: User }) {
       <section className="actions-panel">
         <h2>Actions</h2>
         <ErrorNote message={actionError} />
-        {actions.filter(a => a !== 'NOTE').length === 0 && <p className="muted">No actions for you at this stage.</p>}
+        {actions.filter(a => a !== 'NOTE' && a !== 'MESSAGE').length === 0 && <p className="muted">{customer ? 'Nothing is needed from you right now. We will notify you about any updates.' : 'No actions for you at this stage.'}</p>}
         {has('ASSIGN') && <AssignForm busy={busy} onAssign={choice => run(() => api.assign(incident.id, choice))} />}
         {has('ACKNOWLEDGE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'ACKNOWLEDGE'))}>Acknowledge</button>}
         {has('START') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'START'))}>Start investigation</button>}
@@ -93,7 +102,22 @@ export function IncidentDetail({ user }: { user: User }) {
       </section>
     </div>
 
-    <h2>Incident history</h2>
+    <section className="conversation">
+      <h2>{customer || user.role === 'Employee' ? 'Messages with the IT team' : 'Messages with the reporter'}</h2>
+      {!conversation.length && <p className="muted">{customer ? 'No messages yet. Ask a question or add details below, and the person handling your report will reply here.' : 'No messages yet.'}</p>}
+      <ol className="messages">{conversation.map((m, n) => <li key={n} className={m.actorId !== null && String(m.actorId) === user.id ? 'mine' : ''}>
+        <div className="bubble">
+          {m.action === 'INFO_REQUESTED' && <span className="kind">Question</span>}
+          {m.action === 'INFO_PROVIDED' && <span className="kind">Answer</span>}
+          <p className="preserve">{m.description}</p>
+          <small>{m.actorName} · {formatDate(m.at)}</small>
+        </div>
+      </li>)}</ol>
+      {has('MESSAGE') && <TextAction id="message" label={customer ? 'Message the IT team' : 'Send a message to the reporter'} button="Send message" min={1} max={2000}
+        placeholder={customer ? 'Ask a question or add details' : 'Visible to the reporter'} busy={busy} onSubmit={t => run(() => api.message(incident.id, t))} />}
+    </section>
+
+    <h2>{customer ? 'Progress' : 'Incident history'}</h2>
     <ol className="history">{(incident.history ?? []).map((h, n) => <li key={n}>
       <strong>{humanize(h.action)}{h.fromStatus !== h.toStatus && h.toStatus && <span className="transition"> {h.fromStatus ?? '—'} → {h.toStatus}</span>}{h.description && <span className="desc">{h.description}</span>}</strong>
       <small>{formatDate(h.at)} · {h.actorName}</small>
@@ -149,7 +173,7 @@ function TextAction({ id, label, button, min, max, placeholder, busy, onSubmit }
 function NoteForm({ busy, onNote }: { busy: boolean; onNote: (text: string) => void }) {
   const [text, setText] = useState('');
   return <div className="action-form">
-    <label>Add a note<textarea id="note" className="short" maxLength={2000} value={text} onChange={e => setText(e.target.value)} placeholder="Investigation notes, extra information, questions" /></label>
+    <label>Internal note (not shown to customers)<textarea id="note" className="short" maxLength={2000} value={text} onChange={e => setText(e.target.value)} placeholder="Investigation notes, extra information, questions" /></label>
     <button className="secondary" disabled={busy || text.trim().length < 2} onClick={() => { onNote(text); setText(''); }}>Add note</button>
   </div>;
 }

@@ -115,3 +115,14 @@ td .inline-input{display:inline-block;width:auto}
 .choice-group{border:1px solid var(--line);background:white;padding:12px 16px;display:grid;gap:8px;margin:0}
 .choice-group legend{font-size:12px;font-weight:500;padding:0 4px}
 .choice-group .checkbox span small{display:block;color:#647182;font-weight:400}
+
+/* Conversation between the reporter and the IT team */
+.conversation{border-bottom:0}
+.messages{list-style:none;padding:0;margin:0 0 14px;display:grid;gap:10px;max-width:760px}
+.messages li{display:flex}
+.messages li.mine{justify-content:flex-end}
+.bubble{background:white;border:1px solid var(--line);border-radius:2px;padding:10px 14px;max-width:80%}
+.messages li.mine .bubble{background:#eef4f7;border-color:#c9dbe5}
+.bubble p{margin:0 0 4px}
+.bubble .kind{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#91511d;font-weight:600}
+.conversation .action-form{max-width:760px;border-bottom:0}

@@ -12,6 +12,9 @@ export function Overview({ user }: { user: User }) {
 
   const metrics: [string, string | number][] = manager && report.data
     ? [['Total incidents', report.data.total], ['Open incidents', report.data.open], ['Critical (P1) open', report.data.critical], ['SLA violations', report.data.slaViolations]]
+    : user.role === 'Customer'
+    ? [['My reports', items.length], ['Open', items.filter(i => !finished.includes(i.status)).length],
+       ['Waiting for my answer', items.filter(i => i.informationRequest).length], ['Resolved', items.filter(i => finished.includes(i.status)).length]]
     : [['My incidents', items.length], ['Active', items.filter(i => !finished.includes(i.status)).length],
        ['Critical (P1)', items.filter(i => i.priority === 'P1' && i.status !== 'CLOSED').length], ['SLA breaches', items.filter(i => i.sla === 'BREACHED').length]];
 
@@ -29,7 +32,7 @@ export function Overview({ user }: { user: User }) {
     {manager && report.data && <p className="muted">SLA compliance on finished incidents: <strong>{report.data.slaCompliancePercent ?? '—'}{report.data.slaCompliancePercent !== null && '%'}</strong>
       {report.data.averageResolutionMinutes !== null && <> · Average time to resolve: <strong>{Math.round(report.data.averageResolutionMinutes)} min</strong></>}</p>}
     <div className="section-heading"><h2>Recent incidents</h2><Link to="/incidents">View all incidents</Link></div>
-    {incidents.loading && !incidents.data ? <p role="status">Loading incidents…</p> : <IncidentRows items={items.slice(0, 5)} showAssignee={user.role !== 'Technician'} />}
+    {incidents.loading && !incidents.data ? <p role="status">Loading incidents…</p> : <IncidentRows items={items.slice(0, 5)} showAssignee={user.role !== 'Technician'} customer={user.role === 'Customer'} />}
     <div className="overview-bottom">
       <section><h2>Incidents by service</h2>
         {byService.map(s => <div className="service-row" key={s.label}><span>{s.label}</span><span>{s.count}</span></div>)}

@@ -91,8 +91,9 @@ public class IncidentWorkflowService {
             if (!canSee(actor, dto)) continue;
             IncidentView v = view(s, dto, actor, now, false);
             if (!q.isEmpty() && !(v.id() + " " + v.title() + " " + v.description()).toLowerCase(Locale.ROOT).contains(q)) continue;
-            if (!matches(filters.get("status"), v.status()) || !matches(filters.get("priority"), v.priority())
-                    || !matches(filters.get("category"), v.category()) || !matches(filters.get("sla"), v.sla())
+            boolean triage = !actor.isCustomer();
+            if (!matches(filters.get("status"), v.status()) || (triage && !matches(filters.get("priority"), v.priority()))
+                    || !matches(filters.get("category"), v.category()) || (triage && !matches(filters.get("sla"), v.sla()))
                     || !matches(filters.get("serviceId"), String.valueOf(v.serviceId()))
                     || !matches(filters.get("technicianId"), v.assigneeId() == null ? "" : String.valueOf(v.assigneeId()))) continue;
             LocalDate created = v.createdAt().atZone(ZoneId.systemDefault()).toLocalDate();
@@ -233,7 +234,8 @@ public class IncidentWorkflowService {
                     "Similar open incidents: " + duplicates.stream().map(SimilarView::id).collect(Collectors.joining(", "))));
 
         publish(id, "CREATED", "New " + dbPriority + " incident " + id + " on " + service.getName() + ": " + title);
-        return new CreatedIncident(detail(actor, id), duplicates);
+        publish(id, "RECEIVED", "We received your report " + id + ": " + title + ". Our IT team will look into it.");
+        return new CreatedIncident(detail(actor, id), actor.isCustomer() ? List.of() : duplicates);
     }
 
     public synchronized IncidentView assign(Actor actor, String id, String strategyName, Long technicianId) {
@@ -337,7 +339,33 @@ public class IncidentWorkflowService {
         return detail(actor, id);
     }
 
+    /**
+     * Conversation between the reporter and the IT team (the assigned technician, or the IT manager
+     * while nobody is assigned). Unlike internal notes, messages are visible to the reporter.
+     */
+    public synchronized IncidentView sendMessage(Actor actor, String id, String message) {
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+        if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("This incident is closed. Report a new problem if you still need help.");
+        if (!canMessage(actor, dto)) throw new SecurityException("Only the reporter and the IT staff handling this incident can send messages.");
+        String body = text(message, "message", 1, 2000);
+        audit.save(new AuditLog(id, actor.userId(), "MESSAGE", dto.getStatus().name(), dto.getStatus().name(), body));
+        String sender = s.userName(actor.userId());
+        if (Objects.equals(dto.getReporterId(), actor.userId()))
+            publish(id, dto.getAssignedTechnicianId() == null ? "MESSAGE_UNASSIGNED" : "MESSAGE_FROM_REPORTER", sender + " wrote on " + id + ": " + body);
+        else
+            publish(id, "MESSAGE_TO_REPORTER", sender + " from the IT team wrote on " + id + ": " + body);
+        return detail(actor, id);
+    }
+
+    private static boolean canMessage(Actor actor, com.irctc.itsm.model.Incident dto) {
+        return actor.isAdmin()
+                || (actor.isReporter() && Objects.equals(dto.getReporterId(), actor.userId()))
+                || (actor.isTechnician() && Objects.equals(dto.getAssignedTechnicianId(), actor.userId()));
+    }
+
     public synchronized IncidentView addNote(Actor actor, String id, String note) {
+        if (actor.isCustomer()) throw new SecurityException("Use Messages to talk to the IT team.");
         Snapshot s = snapshot();
         com.irctc.itsm.model.Incident dto = visible(s, actor, id);
         if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("Closed incidents cannot take new notes.");
@@ -563,6 +591,17 @@ public class IncidentWorkflowService {
             actions = allowedActions(actor, dto, resolution, incident.isAwaitingInformation());
             similar = actor.isReporter() ? List.of() : similarTo(s, incident);
         }
+        if (actor.isCustomer()) {
+            // Customers see what is happening and who is helping them, never internal triage:
+            // no priority, SLA targets, impact ratings, internal notes or internal history entries.
+            if (history != null) history = customerHistory(history, s);
+            return new IncidentView(id, dto.getTitle(), dto.getDescription(), dto.getCategory(), dto.getServiceId(),
+                    service == null ? null : service.getServiceName(), 0, 0, 0, 0, false, null, null,
+                    dto.getStatus().name(), dto.getReporterId(), s.userName(dto.getReporterId()), dto.getAssignedTechnicianId(),
+                    s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
+                    null, null, s.resolvedAt(id), "NONE", incident.getInformationRequest(), incident.getInformationRequestedAt(),
+                    resolution, history, actions, similar);
+        }
         return new IncidentView(id, dto.getTitle(), dto.getDescription(), dto.getCategory(), dto.getServiceId(),
                 service == null ? null : service.getServiceName(), Mapping.score(dto.getImpact()), Mapping.score(dto.getUrgency()),
                 incident.getAffectedService().getBusinessCriticality(), s.affectedUsers(id), dto.isTatkalWindow(),
@@ -572,6 +611,18 @@ public class IncidentWorkflowService {
                 s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
                 responseDue, resolutionDue, s.resolvedAt(id), sla, incident.getInformationRequest(), incident.getInformationRequestedAt(),
                 resolution, history, actions, similar);
+    }
+
+    /** History entries a customer may see. Internal triage (priority, assessment, duplicates, notes, SLA) is left out. */
+    private static final Set<String> CUSTOMER_VISIBLE = Set.of("INCIDENT_CREATED", "TECHNICIAN_ASSIGNED", "STATUS_CHANGED",
+            "INCIDENT_RESOLVED", "INFO_REQUESTED", "INFO_PROVIDED", "MESSAGE", "FEEDBACK");
+
+    private static List<HistoryView> customerHistory(List<HistoryView> history, Snapshot s) {
+        return history.stream().filter(h -> CUSTOMER_VISIBLE.contains(h.action()))
+                .map(h -> h.action().equals("TECHNICIAN_ASSIGNED")
+                        ? new HistoryView(h.at(), h.actorId(), h.actorName(), h.action(), h.fromStatus(), h.toStatus(), "An IT team member was assigned to help you")
+                        : h)
+                .toList();
     }
 
     private List<String> allowedActions(Actor actor, com.irctc.itsm.model.Incident dto, ResolutionView resolution, boolean waiting) {
@@ -595,7 +646,10 @@ public class IncidentWorkflowService {
             if (status.equals("RESOLVED")) actions.add("VERIFY");
             if (FINISHED.contains(status) && resolution != null && resolution.feedback() == null) actions.add("FEEDBACK");
         }
-        if (!status.equals("CLOSED")) actions.add("NOTE");
+        if (!status.equals("CLOSED")) {
+            if (!actor.isCustomer()) actions.add("NOTE");
+            if (canMessage(actor, dto)) actions.add("MESSAGE");
+        }
         return actions;
     }
 

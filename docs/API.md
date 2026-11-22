@@ -31,7 +31,8 @@ Send `Authorization: Bearer <token>` on every other call.
 | GET | `/incidents/:id` | all (if visible) | Detail with `history`, `resolution`, `allowedActions` and `similar` |
 | POST | `/incidents/:id/assignment` | Manager | `{strategy: "skill" \| "load"}` or `{technicianId}` |
 | POST | `/incidents/:id/transitions` | by action | `{action: "ACKNOWLEDGE" \| "START" \| "RESOLVE" \| "VERIFY" \| "CLOSE"}`; RESOLVE also needs `summary` (10–4000) and `rootCause` (3–2000) |
-| POST | `/incidents/:id/notes` | all (if visible) | `{text}`; recorded in the history |
+| POST | `/incidents/:id/notes` | Staff (not customers) | `{text}`; internal note, never shown to customers |
+| POST | `/incidents/:id/messages` | Reporter, assigned technician, IT manager | `{text}`; conversation between the reporter and the IT team, visible to both. Notifies the assigned technician (or the IT manager while unassigned) or the reporter (in-app and email). Not allowed once closed |
 | POST | `/incidents/:id/feedback` | Employee (reporter) | `{rating: 1-5}` once the incident is resolved |
 | GET | `/incidents/:id/similar` | Technician, Manager | Possible duplicates |
 | POST | `/incidents/:id/info-request` | Technician (assigned) | `{question}` while ACKNOWLEDGED or IN_PROGRESS; one open question at a time; blocks RESOLVE until answered |
@@ -42,6 +43,10 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/notifications/:id/read`, `/notifications/read-all` | all | Mark read → 204 |
 | GET | `/notifications/outbox` | Manager | Simulated email channel |
 | GET | `/reports/overview` | Manager | Totals, SLA compliance, average resolution time, by service / priority / status, workload |
+
+## Customer view
+
+For customers the service removes triage data from every response: `priority`, `priorityReason` and SLA deadlines are `null`, `sla` is `NONE`, impact, urgency and criticality are `0`, duplicates are not returned, priority/SLA filters are ignored, and the history only contains customer-facing entries (created, assigned, status changes, resolution, questions, answers, messages, feedback). Notifications to reporters never mention a priority.
 
 ## Administration (IT manager only)
 
