@@ -92,7 +92,7 @@ Show the complete workflow in the browser, not merely individual API requests. D
 - [ ] Architecture diagram: `docs/ARCHITECTURE.md`
 - [ ] Use case diagram: `docs/USE-CASE-DIAGRAM.mmd` (render to image)
 - [ ] Updated class diagram: `java/domain/docs/domain-class-diagram.mmd` (render and proofread)
-- [ ] PostgreSQL ER diagram with correct actual relationships
+- [x] PostgreSQL ER diagram source: `docs/ER-DIAGRAM.mmd` (render and proofread before submission)
 - [ ] Technology selection rationale and alternatives
 - [ ] Role-based security explanation and limitations
 - [ ] At least 15 tests with actual outcomes and evidence
