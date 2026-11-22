@@ -133,3 +133,8 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
   .auth-brand-logo{width:min(400px,92vw);margin-bottom:20px}
 }
 @media(prefers-reduced-motion:reduce){body{transition:none}}
+
+/* Preserve the provided gradient illustrations without visible rectangular backgrounds. */
+:root[data-theme="light"] .brand-logo{mix-blend-mode:multiply}
+:root[data-theme="dark"] .brand-logo{mix-blend-mode:screen}
+@media(forced-colors:active){.brand-logo{mix-blend-mode:normal}}
