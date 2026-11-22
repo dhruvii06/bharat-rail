@@ -1,0 +1,54 @@
+flowchart LR
+  %% Course use-case overview (actors on the left/right, cases within system boundary).
+  Employee["Employee"]
+  Customer["Customer"]
+  Technician["Technician"]
+  Manager["IT Manager / Administrator"]
+
+  subgraph System["Bharat Rail ITSM — Use Cases"]
+    Login(["Authenticate / change password"])
+    Report(["Report / edit incident"])
+    View(["View incidents and messages"])
+    Verify(["Verify resolution / give feedback"])
+    Assign(["Assign or reassign technician"])
+    Policy(["Configure users, categories, services and SLAs"])
+    Monitor(["Monitor SLAs, audit logs and reports"])
+    Notify(["Receive notifications"])
+    Work(["Acknowledge, investigate and resolve"])
+    Collaborate(["Request information / handover / handoff"])
+    Simulator(["Simulate downstream service impact"])
+    Prioritize(["Classify and prioritize automatically"])
+    Log(["Record incident audit history"])
+  end
+
+  Employee --> Login
+  Employee --> Report
+  Employee --> View
+  Employee --> Verify
+  Employee --> Notify
+
+  Customer --> Login
+  Customer --> Report
+  Customer --> View
+  Customer --> Verify
+  Customer --> Notify
+
+  Technician --> Login
+  Technician --> View
+  Technician --> Work
+  Technician --> Collaborate
+  Technician --> Notify
+
+  Manager --> Login
+  Manager --> Assign
+  Manager --> Policy
+  Manager --> Monitor
+  Manager --> View
+  Manager --> Simulator
+  Manager --> Notify
+
+  Report -.->|"includes"| Prioritize
+  Report -.->|"includes"| Log
+  Work -.->|"includes"| Log
+  Assign -.->|"includes"| Log
+  Collaborate -.->|"includes"| Log
