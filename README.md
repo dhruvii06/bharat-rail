@@ -44,7 +44,19 @@ You need Node.js 22.16+, JDK 21 + Maven, and PostgreSQL (Docker or a local insta
 
 **Who can sign in:** members of the public create a **Customer** account on the login page to report problems and follow them. Employee, technician and IT manager accounts are created by the IT manager (Settings → Users) with a temporary password that must be changed at first sign-in.
 
-On first start in development the API gives every seeded account the demo password from `backend/seed/demoUsers.ts` (or `DEMO_PASSWORD`). The login page lists the demo accounts.
+On first start in development the API gives every seeded account the development password configured by `DEMO_PASSWORD` (or the default in `backend/seed/demoUsers.ts`). **Demo accounts are documented here rather than displayed on the login page.** Use these accounts only with non-production demo data.
+
+| Role | Demo email |
+| --- | --- |
+| Customer | `customer@demo.local` |
+| Employee — Customer Support | `support1@demo.local` |
+| Employee — Station Operations | `ops@demo.local` |
+| Technician — Payments | `tech.payment@demo.local` |
+| Technician — Database | `tech.database@demo.local` |
+| Technician — Application | `app.tech@demo.local` |
+| IT Manager | `admin1@demo.local` |
+
+Before recording a demonstration, the presenter can refer to this table or a private setup sheet for credentials; the public-facing UI contains no development-password instructions.
 
 ## Demo workflows
 
