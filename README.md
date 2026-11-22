@@ -1,4 +1,4 @@
-# oop-irctc
+# bharat-rail
 
 Intelligent IT Service Management & Incident Resolution System (I-ITSM) for the CS F213 / MAC F212 OOP course, set in a fictional railway operator, **Bharat Rail**, modelled on IRCTC-style ticketing incidents. Student project; no live IRCTC integration.
 
