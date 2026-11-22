@@ -1,49 +1,65 @@
-# Course delivery checklist
+# Course delivery status and evidence checklist
 
-## Implemented foundation
+Updated for the integrated React → Node → Java 21 → PostgreSQL system on 22 November 2026. This file replaces the earlier prototype roadmap; do not present old SQLite or browser-only storage as the current solution.
 
-- React + TypeScript routes, role-specific queue views and replaceable CSS.
-- Incident form, priority calculation, illustrative SLA deadlines.
-- Six filters: text, status, priority, service, category, SLA.
-- Demo lifecycle guards, resolution entry, history and browser persistence.
-- Two assignment strategy classes (skill-based default).
-- Domain tests and GitHub Actions build check.
+## Implemented in the source code
 
-## Remaining MVP work
+- Role-aware Employee, Customer, Technician, and IT Manager screens; account management, authentication, forced password change, and server-side role checks.
+- Incident reporting, editing, classification, 20/10/5 priority scoring with security and eligible Tatkal overrides, assignment, investigation, resolution, verification, and closure.
+- Skill-based and load-based assignment; technician capacity, availability, handover, handoff and handback.
+- Configurable SLA targets; background response/resolution warnings, violations and escalation.
+- Event-driven in-app notifications and simulated email outbox.
+- Audit trails, search across incidents, incident history and reporting; nine incident filters in the React UI.
+- Duplicate incident suggestions and a deterministic, educational service-dependency impact simulator.
+- PostgreSQL persistence and transaction-scoped incident, audit and notification writes.
+- Dynamic incident categories associated with support teams, configurable services and SLA policies.
+- Accessibility-oriented light/dark theme and supplied Bharat Rail ITSM branding.
+- Unit/API tests, Java domain checks, and full-stack test scripts in `tests/e2e/`.
 
-- Real registration/login, password protection, server role and ownership authorization.
-- Incident context edits, notes, requests for information, feedback and verification rejection/reopen policy.
-- Technician acceptance/availability management and selectable assignment strategy.
-- Database-backed users, services, categories, incidents, policies, histories and resolutions.
-- SLA policy configuration, continuous monitoring, approaching-deadline warnings and persisted violations.
-- Two notification mechanisms: proposed in-app plus simulated email outbox.
-- Two intelligent features: proposed duplicate suggestions and skill/workload recommendations. Priority calculation alone must not be assumed to satisfy the entire intelligent-feature requirement.
-- Manager user/service/category administration and complete reports/audit views.
-- Backend OOP model with at least two implemented design patterns, final UML/use cases and ER/schema diagrams.
-- Full testing evidence, technology justification report and three recorded complete workflows.
-- Visual design and accessibility review when UI direction is provided.
+**Important:** Implementation means present in source, not automatically verified in a live browser. Full-stack E2E test success and the final report/video must be demonstrated separately.
 
-## Integration acceptance scenarios (pending, not claimed as passed)
+## Commands to verify before the demonstration
 
-1. Valid employee login establishes a session.
-2. Invalid password returns a safe error.
-3. Employee cannot access another employee’s incident.
-4. Technician cannot modify someone else’s assignment.
-5. Manager can assign an eligible available technician.
-6. Missing suitable technicians returns an actionable error.
-7. Skill strategy respects category eligibility.
-8. Load strategy balances active work with deterministic ties.
-9. Invalid priority factor is rejected at the server boundary.
-10. P1 creation uses configured response and resolution deadlines.
-11. Direct classified-to-closed transition is rejected.
-12. Resolution requires meaningful details.
-13. Reporter verification permits manager closure.
-14. SLA boundary equality is within target; late acknowledgement records violation.
-15. Completed incidents retain historical SLA violations.
-16. Duplicate suggestion does not silently merge separate reports.
-17. Database changes and audit events commit atomically.
-18. Two notification channels record delivery or simulation outcomes.
-19. Network failure preserves form text and permits safe retry.
-20. Concurrent transitions reject stale versions without duplicate events.
+```bash
+npm ci
+npm test
+npm run build
+mvn -B -f java/pom.xml verify
+mvn -B -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.itsm.DomainModelChecks -Dexec.classpathScope=test
+```
 
-Automated domain tests cover priority boundaries, invalid factors, role transition rules and SLA timing. These scenarios are broader future acceptance criteria, not evidence that the full backend is complete.
+For full-stack tests use the database and running services, following README.md and docs/TESTING-EVIDENCE.md:
+
+```bash
+npm run db:setup
+npm run service:build
+npm run service
+npm run api
+npm run test:e2e
+```
+
+The service, API and test runner require separate terminals unless launched by a CI workflow. E2E tests modify test data; use a disposable testing database, not a presentation database you wish to preserve.
+
+## Remaining submission evidence (do not claim complete without checking)
+
+- [ ] Capture output of the end-to-end suites against a clean PostgreSQL/Java/Node environment.
+- [ ] Manually test the React website in light and dark mode, on desktop/mobile and across all four roles.
+- [ ] Render and verify the latest UML class diagram in `java/domain/docs/domain-class-diagram.mmd`, plus a use case diagram.
+- [x] ER diagram source added at `docs/ER-DIAGRAM.mmd`; render and proofread against schema before final PDF.
+- [ ] Document at least 15 meaningful test cases and include actual pass/fail evidence.
+- [ ] Include a technology selection report, architecture, security considerations and how OOP concepts are applied.
+- [ ] Record at least three complete end-to-end workflows, including reporting through closure.
+- [ ] Confirm member responsibilities, group number, final video filename, and submission cut-off.
+
+## Known limitations and assumptions
+
+- Fictional Bharat Rail organization; no live Indian Railways/IRCTC integration.
+- Emails are simulated; external email delivery is not included.
+- Incident impact simulator shows hypothetical service dependencies, not monitored production telemetry.
+- Node login sessions are stored in memory and are lost on restart.
+- Frontend priority is an **estimate**. Java calculates and stores the final priority, including trusted service and category information.
+- Enterprise production hardening (TLS termination, scalable sessions, secrets management, expanded request-rate limits and observability) is beyond course MVP scope.
+
+## Source of truth
+
+Use `docs/ARCHITECTURE.md`, `docs/API.md`, `README.md`, the actual Java/TypeScript files and test results as the basis for the final report. The earlier roadmap, screenshots, and prototypes should not override the running implementation.

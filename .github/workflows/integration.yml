@@ -1,0 +1,88 @@
+name: Full-stack integration (PostgreSQL + Java + Node)
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: full-stack-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: irctc_itsm
+          POSTGRES_USER: itsm_user
+          POSTGRES_PASSWORD: integration-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U itsm_user -d irctc_itsm"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ITSM_DB_PASSWORD: integration-only
+      ITSM_DB_HOST: 127.0.0.1
+      ITSM_DB_USER: itsm_user
+      ITSM_DB_NAME: irctc_itsm
+      ITSM_INTERNAL_TOKEN: github-integration-only
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: npm ci
+      - name: Prepare isolated test database
+        run: npm run db:setup
+      - name: Build Java backend and transaction test
+        run: mvn -B -f java/pom.xml verify
+      - name: Start Java and Node, then execute full-stack suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run service > "$RUNNER_TEMP/java-service.log" 2>&1 &
+          java_pid=$!
+          npm run api > "$RUNNER_TEMP/node-api.log" 2>&1 &
+          node_pid=$!
+          cleanup() {
+            kill "$node_pid" "$java_pid" 2>/dev/null || true
+            echo "=== Java service log ==="
+            tail -n 100 "$RUNNER_TEMP/java-service.log" || true
+            echo "=== Node API log ==="
+            tail -n 100 "$RUNNER_TEMP/node-api.log" || true
+          }
+          trap cleanup EXIT
+          # Node's health endpoint can be ready before the Java service.
+          # Wait for BOTH processes to be healthy before launching the admin E2E suite.
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:3001/api/v1/health > /dev/null \
+              && curl --fail --silent --max-time 2 http://127.0.0.1:8081/health > /dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$node_pid" 2>/dev/null || ! kill -0 "$java_pid" 2>/dev/null; then
+              echo "A service stopped before becoming healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Node API or Java incident service did not become healthy in time."
+            exit 1
+          fi
+          echo "Both Node API and Java incident service are healthy."
+          npm run test:e2e

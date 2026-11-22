@@ -1,75 +1,84 @@
-# Venika — Domain Model / OOP: Final Rules and Exception Handling
+# Venika — Domain Model/OOP contribution (current integrated architecture)
 
-## Scope and implementation
+## 1. Problem analysis
 
-This section documents the Java domain module in `java/domain`. The React + Node + SQLite application is the team's running demonstration, whereas the Java module independently demonstrates OOP principles. It is a **simulated IRCTC-like IT incident platform**, not an integration with the real IRCTC production system.
+A fictional railway ticketing organization, Bharat Rail, depends on reliable booking, payments, login, PNR enquiry, database, security, network and support services. When a service fails, an incident must be reported, classified, prioritized, assigned, investigated, resolved, verified and closed. Manual handling can cause delays, missed SLAs, duplicated work and incomplete auditability.
 
-## Problem analysis
+**Stakeholders:** employees who detect incidents; customers who report problems with digital services; technicians responsible for diagnosis and repair; the IT manager who administers policies and handles escalations.
 
-Railway ticketing relies on connected services for Tatkal/general booking, payment authorization, PNR generation, authentication and refunds. Uncoordinated incident handling can produce delayed response, misprioritization, duplicate reports and weak accountability. Our proposed ITSM system records incidents, calculates priority, selects qualified technicians, tracks SLA targets, prevents invalid state transitions and keeps an audit trail.
+**Scope:** This is an IT incident management platform using railway operations as its chosen case study. It is **not** a train-booking application, a real IRCTC integration, or a system monitoring actual railway infrastructure.
 
-**Stakeholders:** passengers and employees reporting failures; technicians investigating and resolving; administrators/IT managers monitoring priorities, workload, SLAs, and service health.
+## 2. Current architecture and component ownership
 
-**Assumptions:** impact and urgency are integers 1–3; each service has a business criticality of 1–3; severe-security and peak-Tatkal flags are supplied from trusted incident classification; example SLA policies are educational, not official IRCTC commitments.
+```text
+React + TypeScript UI  →  Node/Express authenticated API  →  Java 21 service  →  PostgreSQL
+                                                        ↘  Domain objects and strategies
+                                                        ↘  Event/notification observers
+```
 
-## Requirements
+- `src/` is the browser UI, where a priority **estimate** is displayed before submitting.
+- `backend/` manages user login/session tokens, account administration and role authorization; it forwards incident requests to Java.
+- `java/service/` hosts the live Java incident workflow, prioritization, assignment, SLA, audit and notification rules.
+- `java/domain/` is the OOP core used by the Java service and demonstrated through independent domain checks.
+- `java/persistence/` provides PostgreSQL schema and JDBC-backed repositories. Commands run inside shared database transactions.
+- `shared/` holds TypeScript view/contract definitions and advisory UI logic.
 
-Functional requirements:
-1. Users report and inspect incidents with service, category, impact and urgency.
-2. The system calculates and stores P1–P4 using a configurable strategy.
-3. Technicians can be recommended by skill or current workload.
-4. The incident lifecycle is NEW → CLASSIFIED → ASSIGNED → ACKNOWLEDGED → IN_PROGRESS → RESOLVED → VERIFIED → CLOSED.
-5. Unauthorized actors and invalid transitions are rejected.
-6. Response/resolution SLA targets and violations are trackable.
-7. Incident actions are auditable and events can trigger notifications.
-8. Potential duplicate incident reports can be suggested.
+The Java module is **integrated into the backend**; do not repeat the earlier statement that Java is a standalone proof-of-concept while SQLite powers the application.
 
-Non-functional requirements: modularity, testability, input validation, traceability/auditability, extensibility, and appropriate role-based authorization. The integrated team's API must secure endpoints and persist data; the Java standalone module does not implement the deployed web app.
+## 3. Requirements
 
-## Final priority policy
+Functional: role-based reporting and viewing, editable incident details, priority/assignment, managed lifecycle, technician collaboration, SLA tracking, notifications through two channels, audit and incident history, searchable reporting, duplicate suggestions, dynamic categories, administrator settings, and persistence.
 
-`score = impact × urgency × businessCriticality` (each factor 1–3).
+Nonfunctional: traceability, reliable state transitions, authorization, validation, testability, extensibility and modularity. External email delivery, a persistent session store and production observability are not implemented as enterprise features.
+
+## 4. Priority policy
+
+`score = impact × urgency × serviceCriticality` (each factor 1–3).
 
 | Rule | Priority |
 |---|---|
-| Confirmed critical security incident OR peak Tatkal with impact=3 and urgency=3 OR score≥20 | P1 Critical |
+| Security-team category **or** eligible Tatkal booking-path incident with impact=3 and urgency=3 during a reported/current peak Tatkal window **or** score ≥ 20 | P1 Critical |
 | Score 10–19 | P2 High |
 | Score 5–9 | P3 Medium |
 | Score 1–4 | P4 Low |
 
-Override flags must be validated and set by trusted application rules. Affected-user count is stored but currently does not adjust the score. **These are project-defined rules, not IRCTC policies.** The TypeScript web application still used different thresholds at the time of this branch: the backend owner must reconcile `shared/domain.ts` and associated Node tests before the live demo.
+**Critical clarification:** administrators can create custom categories and assign them to the SECURITY team. These must trigger the security override; relying on category code `SECURITY` alone is incorrect. The Tatkal override applies only to services tagged as on the Tatkal booking path, with peak windows 10:00–10:30 / 11:00–11:30 IST. The frontend preview must consider these factors and is advisory; the backend remains the source of truth.
 
-## Java exception hierarchy
+The IT manager may manually change priority on open incidents with a recorded reason. The affected-user count is recorded but is not currently a factor in the score. These rules are educational project decisions, not official railway policies.
 
-- `DomainException` — common domain failure.
-- `InvalidTransitionException` — incorrect status transition (already present).
-- `NoTechnicianAvailableException` — strategy cannot find a suitable technician (already present).
-- `TechnicianUnavailableException` — a directly selected technician is offline/unavailable.
-- `TechnicianWorkloadExceededException` — technician's concurrent capacity reached.
-- `SLAPolicyNotFoundException` — null/unconfigured priority requested.
-- `UnauthorizedIncidentOperationException` — unassigned technician or non-reporter attempts a restricted incident action.
+## 5. OOP concept mapping
 
-Invalid input still uses `IllegalArgumentException`; null required references can use `NullPointerException`. These are caught or mapped at a separate API boundary, not hidden inside the domain.
+| Concept | Implementation |
+|---|---|
+| Encapsulation | `Incident` controls status, assignment, priority and information requests through validated methods. |
+| Inheritance | `User → Reporter → Employee/Customer`; `User → Technician/Administrator`. |
+| Abstraction | `PriorityStrategy`, `AssignmentStrategy`, `IncidentRepository` and `IncidentListener` define interfaces. |
+| Polymorphism | Skill- and load-based assignment implement the same strategy interface; notification senders implement the listener contract. |
+| Composition/aggregation | `Incident` owns resolution and audit records; relates to service, reporter, assigned technician and SLA policy. |
+| Strategy | `RailwayPriorityStrategy`, `SkillBasedAssignmentStrategy`, `LoadBasedAssignmentStrategy`. |
+| Observer | `EventPublisher` dispatches incident events to in-app and simulated-email listeners. |
+| Repository | SQL-backed persistence with interfaces; in-memory repositories support independent domain tests. |
+| Value objects | `IncidentCategory` (extensible code/team), `Resolution`, `SLAPolicy` and other immutable records. |
+| Algorithms | `ServiceDependencyGraph` uses BFS to find hypothetical downstream service impact. |
 
-## UML and OOP mapping
+See `domain-class-diagram.mmd` for the current class design. It includes reporter inheritance, technician handover, dynamic categories and the dependency simulator.
 
-See `domain-class-diagram.mmd` for detailed class relationships. `User` is abstract with `Employee`, `Technician`, and `Administrator` subclasses (inheritance). `Incident` protects status behind business operations (encapsulation). `PriorityStrategy`, `AssignmentStrategy`, and `IncidentRepository` define contracts (abstraction). Interchangeable `SkillBasedAssignmentStrategy` and `LoadBasedAssignmentStrategy` demonstrate polymorphism (Strategy pattern). `EventPublisher` delegates to `IncidentListener` observers (Observer pattern). Incident association with reporter, service, and technician is distinct from contained resolution and audit data.
+## 6. Exception handling
 
-## Java verification
+`InvalidTransitionException`, `NoTechnicianAvailableException`, `TechnicianUnavailableException`, `TechnicianWorkloadExceededException`, `SLAPolicyNotFoundException` and `UnauthorizedIncidentOperationException` are custom Java domain exceptions. Input validation also uses standard runtime exceptions. The API layers translate domain failures to user-facing HTTP error responses.
 
-The dependency-free `DomainModelChecks` runner now contains **36 checks**: previous 30 plus six additional cases for unavailable technician, missing SLA policy, P1/P2/P3 priority scores, and non-override low-impact Tatkal. Existing checks for workload capacity and unauthorized action were changed to require the new typed exceptions.
+## 7. Testing and presentation evidence
 
-Run from `java/domain` with Java 21:
+Java domain checks: `mvn -B -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.itsm.DomainModelChecks -Dexec.classpathScope=test`.
 
-```powershell
-$files = Get-ChildItem -Recurse src -Filter *.java | ForEach-Object FullName
-New-Item -ItemType Directory -Force out | Out-Null
-javac -d out $files
-java -cp out com.railway.itsm.DomainModelChecks
-```
+Live integration: `npm run test:e2e` requires a running PostgreSQL database, Java incident service and Node API. Run tests on an isolated/test database and save actual output, not a fabricated pass count. Follow `docs/TESTING-EVIDENCE.md`.
 
-Expected total: `TOTAL: 36 checks passed`. This branch was edited using the GitHub connector; the checks should be executed by GitHub Actions or a local checkout before merging.
+For the final report include: problem statement, assumptions, role-based requirements, architecture diagram, revised class and use case diagrams, ER diagram, the 20/10/5 priority rules, SLA/assignment strategies, exception hierarchy, at least 15 test cases with evidence, and screenshots of three complete workflows.
 
-## Final report merge checklist
+## 8. Important assumptions/limitations
 
-Include Dhruvi's UI/screenshots and use case diagram, the backend developer's API/architecture/technology/security write-up, Ananya's SQLite schema/ER diagram and test-case table, and this document plus `domain-class-diagram.mmd`. Confirm group number, final upload cutoff and correct video filename before export. Do not claim Java is wired directly into the Node demo.
+- Bharat Rail is fictional and all incidents and service dependencies are simulated.
+- Email is shown in the outbox, not delivered externally.
+- Sessions are in-memory in the Node API; a server restart ends them.
+- The impact simulator does not automatically change real ticket priority.
+- Database performance, production security and external monitoring are not claimed beyond what has been implemented.

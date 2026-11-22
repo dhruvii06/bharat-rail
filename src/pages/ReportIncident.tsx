@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { calculatePriority, type CustomerEffect, type CustomerIncidentInput, type IncidentInput } from '../../shared/domain';
+import { type CustomerEffect, type CustomerIncidentInput, type IncidentInput } from '../../shared/domain';
+import { previewStaffIncidentPriority } from '../../shared/priorityPreview';
 import { useAuth, useLoad } from '../auth';
 import { ErrorNote, humanize } from '../components/ui';
 import { api } from '../data/api';
@@ -69,9 +70,12 @@ function StaffReport() {
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof IncidentInput>(key: K, value: IncidentInput[K]) => setInput(prev => ({ ...prev, [key]: value }));
 
+  const [now, setNow] = useState(() => new Date());
+  // The server auto-detects peak Tatkal windows at the time the report is received.
+  useEffect(() => { const interval = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(interval); }, []);
   const service = services.data?.find(s => s.id === input.serviceId);
-  const preview = service ? calculatePriority({ impact: input.impact, urgency: input.urgency, criticality: service.criticalityScore,
-    securityIncident: input.category === 'SECURITY', tatkalWindow: input.tatkalWindow }) : null;
+  const category = categories.data?.find(c => c.code === input.category);
+  const preview = previewStaffIncidentPriority(input, service, category, now);
 
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setError('');
@@ -105,7 +109,11 @@ function StaffReport() {
       </div>
       <label className="checkbox"><input id="tatkal" type="checkbox" checked={input.tatkalWindow} onChange={e => set('tatkalWindow', e.target.checked)} />
         Started during the Tatkal booking window (10:00–10:30 or 11:00–11:30 IST). Detected automatically for reports filed in the window.</label>
-      <p>Expected priority: <strong>{preview ?? 'choose a service'}</strong> · business criticality comes from the service; security incidents and high-impact Tatkal incidents are P1. The server confirms it on submit.</p>
+      <p>Estimated priority: <strong>{preview?.priority ?? 'choose a service and category'}</strong> · calculated from impact, urgency and service criticality.
+        {preview?.securityOverride && ' Security-team incidents receive a P1 override.'}
+        {preview?.peakTatkalOverride && ' A high-impact booking-path incident in the Tatkal window receives a P1 override.'}
+        {preview?.autoTatkalWindow && service?.tatkalBookingPath && ' The current Tatkal window is detected automatically.'}
+        {' '}The Java service confirms the final priority on submission.</p>
       <button disabled={busy}>{busy ? 'Creating…' : 'Create incident'}</button>
     </form>
   </>;
