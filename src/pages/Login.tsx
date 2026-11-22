@@ -2,11 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth';
 import { api } from '../data/api';
 
-// Sign-in and passenger self-registration (design by Dhruvi). Members of the public register as
-// Passengers to report problems; employee, technician and manager accounts are created by the IT manager.
+// Sign-in and customer self-registration (design by Dhruvi). Members of the public register as
+// Customers to report problems; employee, technician and manager accounts are created by the IT manager.
 
 const demoAccounts = [
-  ['passenger@demo.local', 'Passenger · member of the public'],
+  ['customer@demo.local', 'Customer · member of the public'],
   ['support1@demo.local', 'Employee · Customer Support'],
   ['ops@demo.local', 'Employee · Station Operations'],
   ['tech.payment@demo.local', 'Technician · Payments'],
@@ -47,8 +47,8 @@ export function Login() {
     <div className="auth-brand">BR <span>Bharat Rail</span></div>
     <div className="auth-panel">
       <div className="eyebrow">IT SERVICE MANAGEMENT</div>
-      <h1>{register ? 'Create a passenger account' : 'Sign in'}</h1>
-      <p className="muted">{register ? 'For passengers and members of the public who want to report a problem with Bharat Rail’s online services. Staff accounts are created by the IT manager.' : 'Passengers and Bharat Rail staff sign in here.'}</p>
+      <h1>{register ? 'Create a customer account' : 'Sign in'}</h1>
+      <p className="muted">{register ? 'For customers who want to report a problem with Bharat Rail’s online services. Staff accounts are created by the IT manager.' : 'Customers and Bharat Rail staff sign in here.'}</p>
       <form onSubmit={submit}>
         {error && <p role="alert" className="error">{error}</p>}
         {notice && <p role="status" className="notice-box">{notice}</p>}
@@ -58,7 +58,7 @@ export function Login() {
         {register && <small>Use at least 8 characters, including letters and a number.</small>}
         <button disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}</button>
       </form>
-      <button type="button" className="text-button" disabled={busy} onClick={toggle}>{register ? 'Back to sign in' : 'New passenger? Create an account'}</button>
+      <button type="button" className="text-button" disabled={busy} onClick={toggle}>{register ? 'Back to sign in' : 'New customer? Create an account'}</button>
       {!register && <details className="demo-accounts">
         <summary>Demo accounts</summary>
         <p className="muted">All demo accounts share the development password set in <code>backend/seed/demoUsers.ts</code> (or <code>DEMO_PASSWORD</code>).</p>

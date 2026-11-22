@@ -74,15 +74,19 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT INTO settings (setting_key, setting_value) VALUES ('default_assignment_strategy', 'skill')
 ON CONFLICT (setting_key) DO NOTHING;
 
--- ---- Passenger accounts and first-login password change ----
+-- ---- Customer accounts and first-login password change ----
 
--- Members of the public register as PASSENGER; EMPLOYEE, TECHNICIAN and ADMIN accounts are created by the IT manager.
+-- Members of the public register as CUSTOMER; EMPLOYEE, TECHNICIAN and ADMIN accounts are created by the IT manager.
+-- (Databases set up before the rename used PASSENGER; those rows become CUSTOMER.)
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
-ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('EMPLOYEE', 'TECHNICIAN', 'ADMIN', 'PASSENGER'));
+UPDATE users SET role = 'CUSTOMER' WHERE role = 'PASSENGER';
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('EMPLOYEE', 'TECHNICIAN', 'ADMIN', 'CUSTOMER'));
 
 -- Accounts created by the IT manager start with a temporary password that must be changed at first sign-in.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
+UPDATE users SET email = 'customer@demo.local', full_name = 'Demo Customer', department = 'Customer'
+WHERE email = 'passenger@demo.local' AND NOT EXISTS (SELECT 1 FROM users WHERE email = 'customer@demo.local');
 INSERT INTO users (full_name, email, password_hash, role, department) VALUES
-('Demo Passenger', 'passenger@demo.local', 'unset', 'PASSENGER', 'Public')
+('Demo Customer', 'customer@demo.local', 'unset', 'CUSTOMER', 'Customer')
 ON CONFLICT (email) DO NOTHING;

@@ -18,10 +18,10 @@ export function IncidentList({ user }: { user: User }) {
 
   const selects: [string, keyof IncidentFilters, [string, string][]][] = [
     ['Status', 'status', statuses.map(s => [s, humanize(s)])],
-    ['Priority', 'priority', priorities.map(p => [p, p])],
+    ...(user.role === 'Customer' ? [] : [['Priority', 'priority', priorities.map(p => [p, p])] as [string, keyof IncidentFilters, [string, string][]]]),
     ['Service', 'serviceId', (services.data ?? []).map(s => [String(s.id), s.name])],
     ['Category', 'category', (categories.data ?? []).map(c => [c.code, c.label])],
-    ['SLA', 'sla', slaStates.map(s => [s, slaLabel[s]])]
+    ...(user.role === 'Customer' ? [] : [['SLA', 'sla', slaStates.map(s => [s, slaLabel[s]])] as [string, keyof IncidentFilters, [string, string][]]])
   ];
   if (user.role === 'Manager') selects.push(['Technician', 'technicianId', (technicians.data ?? []).map(t => [String(t.id), t.name])]);
 
@@ -38,6 +38,6 @@ export function IncidentList({ user }: { user: User }) {
     </div>
     <ErrorNote message={list.error} onRetry={list.reload} />
     <p role="status">{list.loading ? 'Loading…' : `${list.data?.length ?? 0} result(s)`}</p>
-    {list.data && <IncidentRows items={list.data} showAssignee={user.role !== 'Technician'} />}
+    {list.data && <IncidentRows items={list.data} showAssignee={user.role !== 'Technician'} customer={user.role === 'Customer'} />}
   </>;
 }

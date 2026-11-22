@@ -7,7 +7,7 @@ import { ServiceUnavailableError } from '../errors.ts';
 // service applies the domain rules and talks to PostgreSQL. Each forwarded request carries the
 // signed-in user's id and role, plus a shared internal token so only this API can call the service.
 
-const serviceRole: Record<Role, string> = { Employee: 'EMPLOYEE', Technician: 'TECHNICIAN', Manager: 'ADMIN', Passenger: 'PASSENGER' };
+const serviceRole: Record<Role, string> = { Employee: 'EMPLOYEE', Technician: 'TECHNICIAN', Manager: 'ADMIN', Customer: 'CUSTOMER' };
 
 export interface ServiceResponse { status: number; body: unknown }
 

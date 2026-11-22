@@ -62,18 +62,18 @@ describe('passwords', () => {
 describe('auth API', () => {
   test('health check is public', async () => assert.equal((await call('GET', '/health')).status, 200));
 
-  test('self-registration creates a Passenger and hides the password hash', async () => {
+  test('self-registration creates a Customer and hides the password hash', async () => {
     const r = await call('POST', '/auth/register', { body: { name: 'New Person', email: 'New@Test.local', password: 'Passw0rdOK' } });
     assert.equal(r.status, 201);
     assert.deepEqual(Object.keys(r.body.user).sort(), ['email', 'id', 'isTeamLead', 'mustChangePassword', 'name', 'role']);
-    assert.equal(r.body.user.role, 'Passenger');
+    assert.equal(r.body.user.role, 'Customer');
     assert.equal(r.body.user.mustChangePassword, false);
     assert.equal(r.body.user.email, 'new@test.local');
   });
 
   test('registration ignores a client-supplied role (cannot self-register as staff)', async () => {
     const r = await call('POST', '/auth/register', { body: { name: 'Sneaky', email: 'sneaky@test.local', password: 'Passw0rdOK', role: 'Employee' } });
-    assert.equal(r.body.user.role, 'Passenger');
+    assert.equal(r.body.user.role, 'Customer');
   });
 
   test('duplicate email returns 409', async () => {
@@ -310,13 +310,13 @@ describe('role gates on admin settings and the information step', () => {
   });
 });
 
-describe('passengers and first-login password change', () => {
-  test('a passenger can report and answer, but not use staff screens', async () => {
+describe('customers and first-login password change', () => {
+  test('a customer can report and answer, but not use staff screens', async () => {
     await call('POST', '/auth/register', { body: { name: 'Rider One', email: 'rider@test.local', password: 'Rider2026x' } });
     const token = await login('rider@test.local', 'Rider2026x');
     const r = await call('POST', '/incidents', { token, body: { title: 'App crashes on UPI', serviceId: 2 } });
     assert.equal(r.status, 201);
-    assert.equal(lastForwarded.headers['x-actor-role'], 'PASSENGER');
+    assert.equal(lastForwarded.headers['x-actor-role'], 'CUSTOMER');
     assert.equal((await call('POST', '/incidents/INC-1/info-response', { token, body: { answer: 'Android 14' } })).status, 201);
     assert.equal((await call('GET', '/technicians', { token })).status, 403);
     assert.equal((await call('GET', '/admin/users', { token })).status, 403);
@@ -353,3 +353,16 @@ describe('passengers and first-login password change', () => {
     assert.equal((await call('POST', '/auth/change-password', { body: { currentPassword: 'a', newPassword: 'Passw0rdOK' } })).status, 401);
   });
 });
+
+describe('priority override', () => {
+  test('only the IT manager can change priority; the request is forwarded', async () => {
+    for (const email of ['emp@test.local', 'tech@test.local']) {
+      assert.equal((await call('POST', '/incidents/INC-1/priority', { token: await login(email), body: { priority: 'P1', reason: 'Affects everyone' } })).status, 403, email);
+    }
+    await call('POST', '/incidents/INC-1/priority', { token: await login('mgr@test.local'), body: { priority: 'P1', reason: 'Affects everyone' } });
+    assert.equal(lastForwarded.url, '/incidents/INC-1/priority');
+    assert.deepEqual(lastForwarded.body, { priority: 'P1', reason: 'Affects everyone' });
+    assert.equal(lastForwarded.headers['x-actor-role'], 'ADMIN');
+  });
+});
+

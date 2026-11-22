@@ -126,17 +126,36 @@ public final class DomainModelChecks {
             new com.railway.itsm.domain.impact.ServiceDependencyGraph.ServiceNode("B","B","Ops",2,List.of("A"))));
         check(cycleGraph.analyze("A").affected().size()==1,
             "cyclic dependency graph terminates safely");
-        Passenger rider=new Passenger("Rider","rider@example.test");
+        Customer rider=new Customer("Rider","rider@example.test");
         Incident publicReport=new Incident("App crash on payment","The app closes when I pay by UPI",rider,SERVICE,
             IncidentCategory.APPLICATION,Impact.MEDIUM,Urgency.MEDIUM,1,false,false,START);
-        check(publicReport.getReporter() instanceof Reporter && "PASSENGER".equals(rider.getRole()),"a passenger can report an incident");
+        check(publicReport.getReporter() instanceof Reporter && "CUSTOMER".equals(rider.getRole()),"a customer can report an incident");
         publicReport.classify(priority.calculate(publicReport),ADMIN,START);
         Technician appTech=new Technician("App","app@example.test",Set.of(Skill.APPLICATION),3);
         publicReport.assign(appTech,ADMIN,START);publicReport.acknowledge(appTech,START);publicReport.startInvestigation(appTech,START);
         publicReport.resolve(appTech,"Fixed the UPI intent handler","Null intent",START.plusSeconds(60));
-        throwsException(UnauthorizedIncidentOperationException.class,()->publicReport.verify(EMP,START.plusSeconds(70)),"staff cannot verify a passenger's incident");
+        throwsException(UnauthorizedIncidentOperationException.class,()->publicReport.verify(EMP,START.plusSeconds(70)),"staff cannot verify a customer's incident");
         publicReport.verify(rider,START.plusSeconds(80));
-        check(publicReport.getStatus()==IncidentStatus.VERIFIED,"the passenger verifies their own incident");
+        check(publicReport.getStatus()==IncidentStatus.VERIFIED,"the customer verifies their own incident");
+        var blockedPaid=CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(CustomerReportAssessment.Effect.BLOCKED,true,true));
+        check(blockedPaid.impact()==Impact.HIGH && blockedPaid.urgency()==Urgency.HIGH,"customer blocked and charged: high impact, high urgency");
+        var minorPaid=CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(CustomerReportAssessment.Effect.MINOR,true,false));
+        check(minorPaid.impact()==Impact.MEDIUM,"money taken raises a minor problem to medium impact");
+        var cosmetic=CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(CustomerReportAssessment.Effect.MINOR,false,false));
+        check(cosmetic.impact()==Impact.LOW && cosmetic.urgency()==Urgency.LOW,"cosmetic issue stays low");
+        throwsException(NullPointerException.class,()->new CustomerReportAssessment.Answers(null,false,false),"customer must say how they were affected");
+        Incident escalate=incident(Impact.LOW,Urgency.LOW,false,false);
+        throwsException(InvalidTransitionException.class,()->escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN,"x",START),"priority cannot change before classification");
+        escalate.classify(priority.calculate(escalate),ADMIN,START);
+        throwsException(IllegalArgumentException.class,()->escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN," ",START),"a reason is required to change priority");
+        throwsException(IllegalArgumentException.class,()->escalate.changePriority(escalate.getPriority(),SLAPolicy.forPriority(escalate.getPriority()),ADMIN,"same",START),"changing to the same priority is refused");
+        escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN,"Affects all Tatkal bookings",START.plusSeconds(60));
+        check(escalate.getPriority()==Priority.P1_CRITICAL && escalate.getSlaPolicy().resolutionTarget().equals(Duration.ofMinutes(30))
+            && escalate.getAuditTrail().stream().anyMatch(e->e.action().equals("PRIORITY_CHANGED")),"IT manager raises priority; SLA follows; audited");
+        Technician fixer=new Technician("Fixer","fixer@example.test",Set.of(Skill.PAYMENTS),3);
+        escalate.assign(fixer,ADMIN,START);escalate.acknowledge(fixer,START);escalate.startInvestigation(fixer,START);
+        escalate.resolve(fixer,"Restarted the payment callback service","Stuck worker",START.plusSeconds(120));
+        throwsException(InvalidTransitionException.class,()->escalate.changePriority(Priority.P2_HIGH,SLAPolicy.forPriority(Priority.P2_HIGH),ADMIN,"late",START.plusSeconds(130)),"priority cannot change after resolution");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

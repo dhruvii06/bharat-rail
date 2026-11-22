@@ -22,17 +22,17 @@ export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () 
   return <p role="alert" className="error">{message} {onRetry && <button className="link-button" onClick={onRetry}>Retry</button>}</p>;
 }
 
-export function IncidentRows({ items, showAssignee = true }: { items: Incident[]; showAssignee?: boolean }) {
+export function IncidentRows({ items, showAssignee = true, customer = false }: { items: Incident[]; showAssignee?: boolean; customer?: boolean }) {
   if (!items.length) return <div className="empty-state"><h2>No incidents to display</h2><p>Reported incidents will appear here. Adjust the filters to see other work.</p></div>;
   return <div className="table-wrap"><table>
-    <thead><tr><th>Incident</th><th>Service</th><th>Priority</th><th>Status</th>{showAssignee && <th>Assigned to</th>}<th>SLA</th></tr></thead>
+    <thead><tr><th>Incident</th><th>Service</th>{!customer && <th>Priority</th>}<th>Status</th>{showAssignee && <th>{customer ? 'Handled by' : 'Assigned to'}</th>}{!customer && <th>SLA</th>}</tr></thead>
     <tbody>{items.map(i => <tr key={i.id}>
       <td><Link to={`/incidents/${i.id}`}>{i.title}</Link><small>{i.id} · {formatDate(i.createdAt)}</small></td>
       <td>{i.serviceName}<small>{humanize(i.category)}</small></td>
-      <td><PriorityBadge priority={i.priority} /></td>
+      {!customer && <td><PriorityBadge priority={i.priority} /></td>}
       <td><StatusTag status={i.status} />{i.informationRequest && <small className="waiting">Waiting for reporter</small>}</td>
       {showAssignee && <td>{i.assigneeName ?? <span className="muted">Unassigned</span>}</td>}
-      <td><SlaTag sla={i.sla} /></td>
+      {!customer && <td><SlaTag sla={i.sla} /></td>}
     </tr>)}</tbody>
   </table></div>;
 }

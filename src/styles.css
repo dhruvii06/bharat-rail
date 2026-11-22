@@ -112,3 +112,20 @@ td .inline-input{display:inline-block;width:auto}
 @media(max-width:700px){.impact-controls{grid-template-columns:1fr}.impact-graph{display:flex;flex-direction:column;gap:8px}.impact-graph-col{width:100%}.impact-graph-arrow{padding:0 0 0 10px;transform:rotate(90deg)}.impact-node{min-height:0}.impact-demo-pill{font-size:9px}}
 .who-link{color:#a9b6c6;text-decoration:underline}
 .who-link:hover{color:white}
+.choice-group{border:1px solid var(--line);background:white;padding:12px 16px;display:grid;gap:8px;margin:0}
+.choice-group legend{font-size:12px;font-weight:500;padding:0 4px}
+.choice-group .checkbox span small{display:block;color:#647182;font-weight:400}
+
+/* Conversation between the reporter and the IT team */
+.conversation{border-bottom:0}
+.messages{list-style:none;padding:0;margin:0 0 14px;display:grid;gap:10px;max-width:760px}
+.messages li{display:flex}
+.messages li.mine{justify-content:flex-end}
+.bubble{background:white;border:1px solid var(--line);border-radius:2px;padding:10px 14px;max-width:80%}
+.messages li.mine .bubble{background:#eef4f7;border-color:#c9dbe5}
+.bubble p{margin:0 0 4px}
+.bubble .kind{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#91511d;font-weight:600}
+.conversation .action-form{max-width:760px;border-bottom:0}
+.priority-form summary{cursor:pointer;font-weight:500;font-size:13px}
+.priority-form summary small{display:block;color:#647182;font-weight:400}
+.priority-form[open] summary{margin-bottom:8px}

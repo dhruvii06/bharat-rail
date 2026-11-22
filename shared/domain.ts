@@ -1,13 +1,13 @@
 // Shared contract between the React frontend and the API. The Java incident service
 // (java/service, Views.java) is the source of truth for incidents; these types mirror its JSON.
 
-export type Role = 'Employee' | 'Technician' | 'Manager' | 'Passenger';
+export type Role = 'Employee' | 'Technician' | 'Manager' | 'Customer';
 /** Roles that report incidents, follow their own, answer questions and verify fixes. */
-export const reporterRoles: Role[] = ['Employee', 'Passenger'];
+export const reporterRoles: Role[] = ['Employee', 'Customer'];
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
-export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE' | 'CHANGE_PRIORITY';
 export type Criticality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export const criticalities: Criticality[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
@@ -22,6 +22,13 @@ export interface User { id: string; name: string; email: string; role: Role; isT
 export interface IncidentInput {
   title: string; description: string; serviceId: number; category: string;
   impact: number; urgency: number; affectedUsers: number; tatkalWindow: boolean;
+}
+
+/** What a customer tells us; the system works out impact, urgency, category and priority from it. */
+export type CustomerEffect = 'BLOCKED' | 'DEGRADED' | 'MINOR';
+export interface CustomerIncidentInput {
+  title: string; description: string; serviceId: number;
+  effect: CustomerEffect; moneyTaken: boolean; stillHappening: boolean;
 }
 
 export interface HistoryEntry {

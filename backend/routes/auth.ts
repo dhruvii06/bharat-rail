@@ -6,7 +6,7 @@ import { BodyValidator } from '../http/validate.ts';
 export function authRoutes(auth: AuthService): Router {
   const router = Router();
 
-  // POST /auth/register  {name, email, password} -> 201 {user}. Creates a Passenger account.
+  // POST /auth/register  {name, email, password} -> 201 {user}. Creates a Customer account.
   router.post('/register', async (req, res) => {
     const v = new BodyValidator(req.body);
     const name = v.string('name', { min: 2, max: 80 });

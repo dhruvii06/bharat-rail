@@ -70,6 +70,8 @@ public final class ApiServer {
         route("POST", "/incidents/{id}/assignment", 200, r -> workflow.assign(r.actor(), r.id(), r.text("strategy"), r.number("technicianId")));
         route("POST", "/incidents/{id}/transitions", 200, r -> workflow.transition(r.actor(), r.id(), r.text("action"), r.text("summary"), r.text("rootCause")));
         route("POST", "/incidents/{id}/notes", 200, r -> workflow.addNote(r.actor(), r.id(), r.text("text")));
+        route("POST", "/incidents/{id}/messages", 200, r -> workflow.sendMessage(r.actor(), r.id(), r.text("text")));
+        route("POST", "/incidents/{id}/priority", 200, r -> workflow.changePriority(r.actor(), r.id(), r.text("priority"), r.text("reason")));
         route("POST", "/incidents/{id}/feedback", 200, r -> workflow.feedback(r.actor(), r.id(), r.integer("rating")));
         route("GET", "/incidents/{id}/similar", 200, r -> workflow.similar(r.actor(), r.id()));
         route("POST", "/incidents/{id}/info-request", 200, r -> workflow.requestInformation(r.actor(), r.id(), r.text("question")));
