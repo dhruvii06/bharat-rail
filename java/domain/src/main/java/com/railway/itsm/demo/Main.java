@@ -19,7 +19,7 @@ public final class Main {
         Administrator admin=new Administrator("IT Manager","manager@example.test");
         Technician a=new Technician("Asha","asha@example.test",Set.of(Skill.PAYMENTS),3);
         Technician b=new Technician("Dev","dev@example.test",Set.of(Skill.PAYMENTS),3);
-        RailwayService tatkal=new RailwayService("Tatkal Payment Gateway",3);
+        RailwayService tatkal=new RailwayService("Tatkal Payment Gateway",3,true);
         Instant start=Instant.parse("2026-11-12T04:00:00Z");
         Incident incident=new Incident("UPI payment failing during Tatkal",
           "UPI debited but booking does not finish",employee,tatkal,IncidentCategory.PAYMENT,

@@ -66,12 +66,6 @@ export class TooManyRequestsError extends AppError {
   readonly code: string = 'TOO_MANY_REQUESTS';
 }
 
-export class NotImplementedError extends AppError {
-  readonly status = 501;
-  readonly code: string = 'NOT_IMPLEMENTED';
-  constructor(message = 'This endpoint is planned but not built yet. See docs/API.md.') { super(message); }
-}
-
 export class ServiceUnavailableError extends AppError {
   readonly status = 503;
   readonly code: string = 'SERVICE_UNAVAILABLE';

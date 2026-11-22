@@ -48,7 +48,7 @@ function Shell({ user }: { user: User }) {
       <Routes>
         <Route path="/" element={<Overview user={user} />} />
         <Route path="/incidents" element={<IncidentList user={user} />} />
-        <Route path="/incidents/new" element={reporter ? <ReportIncident /> : <p>Incidents are reported by employees and passengers.</p>} />
+        <Route path="/incidents/new" element={reporter ? <ReportIncident /> : <p>Incidents are reported by employees and customers.</p>} />
         <Route path="/account" element={<ChangePassword />} />
         <Route path="/incidents/:id" element={<IncidentDetail user={user} />} />
         <Route path="/management" element={user.role === 'Manager' ? <Management /> : <p>This screen is for the IT manager.</p>} />

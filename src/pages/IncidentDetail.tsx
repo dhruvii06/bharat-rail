@@ -84,6 +84,7 @@ export function IncidentDetail({ user }: { user: User }) {
         <ErrorNote message={actionError} />
         {actions.filter(a => a !== 'NOTE' && a !== 'MESSAGE').length === 0 && <p className="muted">{customer ? 'Nothing is needed from you right now. We will notify you about any updates.' : 'No actions for you at this stage.'}</p>}
         {has('ASSIGN') && <AssignForm busy={busy} onAssign={choice => run(() => api.assign(incident.id, choice))} />}
+        {has('EDIT') && <EditForm incident={incident} manager={user.role === 'Manager'} busy={busy} onSave={patch => run(() => api.edit(incident.id, patch))} />}
         {has('CHANGE_PRIORITY') && <PriorityForm current={incident.priority} busy={busy} onChange={(p, reason) => run(() => api.changePriority(incident.id, p, reason))} />}
         {has('ACKNOWLEDGE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'ACKNOWLEDGE'))}>Acknowledge</button>}
         {has('START') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'START'))}>Start investigation</button>}
@@ -159,6 +160,31 @@ function FeedbackForm({ busy, onRate }: { busy: boolean; onRate: (rating: number
     <label>Rate the resolution<select id="rating" value={rating} onChange={e => setRating(Number(e.target.value))}>{[5, 4, 3, 2, 1].map(r => <option key={r} value={r}>{r} / 5</option>)}</select></label>
     <button disabled={busy} onClick={() => onRate(rating)}>Send feedback</button>
   </div>;
+}
+
+/** Correct the report. Reporters can fix text until a technician acknowledges it; the IT manager can also change the category. */
+function EditForm({ incident, manager, busy, onSave }: { incident: Incident; manager: boolean; busy: boolean; onSave: (patch: { title?: string; description?: string; category?: string }) => void }) {
+  const [title, setTitle] = useState(incident.title);
+  const [description, setDescription] = useState(incident.description);
+  const [category, setCategory] = useState(incident.category);
+  const categories = useLoad(() => (manager ? api.categories() : Promise.resolve([])), [manager]);
+  useEffect(() => { setTitle(incident.title); setDescription(incident.description); setCategory(incident.category); }, [incident.title, incident.description, incident.category]);
+  const patch = {
+    ...(title.trim() !== incident.title ? { title: title.trim() } : {}),
+    ...(description.trim() !== incident.description ? { description: description.trim() } : {}),
+    ...(manager && category !== incident.category ? { category } : {})
+  };
+  const changed = Object.keys(patch).length > 0;
+  return <details className="action-form edit-form">
+    <summary>{manager ? 'Edit incident' : 'Edit your report'} <small>{manager ? 'Changing the category can change the priority.' : 'You can correct it until a technician starts on it.'}</small></summary>
+    <label>Title<input id="edit-title" maxLength={120} value={title} onChange={e => setTitle(e.target.value)} /></label>
+    <label>Description<textarea id="edit-description" maxLength={4000} value={description} onChange={e => setDescription(e.target.value)} /></label>
+    {manager && <label>Category<select id="edit-category" value={category} onChange={e => setCategory(e.target.value)}>
+      {categories.data?.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+      {!categories.data?.some(c => c.code === incident.category) && <option value={incident.category}>{humanize(incident.category)}</option>}
+    </select></label>}
+    <button disabled={busy || !changed || title.trim().length < 5 || description.trim().length < 10} onClick={() => onSave(patch)}>Save changes</button>
+  </details>;
 }
 
 function PriorityForm({ current, busy, onChange }: { current: string | null; busy: boolean; onChange: (priority: string, reason: string) => void }) {

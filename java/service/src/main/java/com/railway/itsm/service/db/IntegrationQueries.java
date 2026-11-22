@@ -22,10 +22,14 @@ public class IntegrationQueries {
 
     public record Extras(Instant acknowledgedAt, int affectedUsers, String infoRequest, Instant infoRequestedAt) {}
 
-    public record CategoryRow(String code, String label, boolean active) {}
+    /** {@code skill} is the technician team that handles the category, stored like technician skills. */
+    public record CategoryRow(String code, String label, boolean active, String skill) {}
 
     public record NotificationRow(long id, String incidentId, String channel, String type, String message,
                                   Instant createdAt, boolean read) {}
+
+    public record AuditRow(long id, String incidentId, Instant at, Long actorId, String actorName, String action,
+                           String fromStatus, String toStatus, String description) {}
 
     public record OutboxRow(long id, String recipientEmail, String incidentId, String type, String message, Instant createdAt) {}
 
@@ -77,17 +81,37 @@ public class IntegrationQueries {
     }
 
     public List<CategoryRow> categories() {
-        return query("SELECT code, label, active FROM categories ORDER BY label", ps -> {}, rs -> {
+        return query("SELECT code, label, active, skill FROM categories ORDER BY label", ps -> {}, rs -> {
             List<CategoryRow> list = new ArrayList<>();
-            while (rs.next()) list.add(new CategoryRow(rs.getString(1), rs.getString(2), rs.getBoolean(3)));
+            while (rs.next()) list.add(new CategoryRow(rs.getString(1), rs.getString(2), rs.getBoolean(3), rs.getString(4)));
             return list;
         });
     }
 
-    public boolean updateCategory(String code, String label, Boolean active) {
-        return update("UPDATE categories SET label = COALESCE(?, label), active = COALESCE(?, active) WHERE code = ?", ps -> {
-            ps.setString(1, label); ps.setObject(2, active, java.sql.Types.BOOLEAN); ps.setString(3, code);
+    public boolean updateCategory(String code, String label, Boolean active, String skill) {
+        return update("UPDATE categories SET label = COALESCE(?, label), active = COALESCE(?, active), skill = COALESCE(?, skill) WHERE code = ?", ps -> {
+            ps.setString(1, label); ps.setObject(2, active, java.sql.Types.BOOLEAN); ps.setString(3, skill); ps.setString(4, code);
         }) > 0;
+    }
+
+    /** Adds a category; false if the code is already taken. */
+    public boolean createCategory(String code, String label, String skill) {
+        return update("INSERT INTO categories (code, label, active, skill) VALUES (?, ?, TRUE, ?) ON CONFLICT (code) DO NOTHING", ps -> {
+            ps.setString(1, code); ps.setString(2, label); ps.setString(3, skill);
+        }) > 0;
+    }
+
+    /** Services a Tatkal booking depends on. */
+    public java.util.Set<Long> tatkalServiceIds() {
+        return query("SELECT service_id FROM it_services WHERE tatkal_path", ps -> {}, rs -> {
+            java.util.Set<Long> ids = new java.util.HashSet<>();
+            while (rs.next()) ids.add(rs.getLong(1));
+            return ids;
+        });
+    }
+
+    public void setTatkalPath(long serviceId, boolean onPath) {
+        update("UPDATE it_services SET tatkal_path = ? WHERE service_id = ?", ps -> { ps.setBoolean(1, onPath); ps.setLong(2, serviceId); });
     }
 
     public String setting(String key, String fallback) {
@@ -153,6 +177,36 @@ public class IntegrationQueries {
                         rs.getString(5), instant(rs.getTimestamp(6))));
                 return list;
             });
+    }
+
+    /** Audit entries across all incidents; every filter is optional. Text search covers the description and incident title. */
+    public List<AuditRow> searchAudit(String text, String action, String incidentId, Long userId, Instant from, Instant to, int limit) {
+        String sql = "SELECT a.log_id, a.incident_id, a.created_at, a.performed_by, u.full_name, a.action, a.previous_state, a.new_state, a.description "
+                + "FROM audit_logs a LEFT JOIN users u ON u.user_id = a.performed_by LEFT JOIN incidents i ON i.incident_id = a.incident_id "
+                + "WHERE (CAST(? AS TEXT) IS NULL OR a.description ILIKE '%' || CAST(? AS TEXT) || '%' OR i.title ILIKE '%' || CAST(? AS TEXT) || '%') "
+                + "AND (CAST(? AS TEXT) IS NULL OR a.action = CAST(? AS TEXT)) "
+                + "AND (CAST(? AS TEXT) IS NULL OR a.incident_id = CAST(? AS TEXT)) "
+                + "AND (CAST(? AS BIGINT) IS NULL OR a.performed_by = CAST(? AS BIGINT)) "
+                + "AND (CAST(? AS TIMESTAMP) IS NULL OR a.created_at >= CAST(? AS TIMESTAMP)) "
+                + "AND (CAST(? AS TIMESTAMP) IS NULL OR a.created_at < CAST(? AS TIMESTAMP)) "
+                + "ORDER BY a.created_at DESC, a.log_id DESC LIMIT ?";
+        Timestamp fromTs = from == null ? null : Timestamp.valueOf(Mapping.local(from));
+        Timestamp toTs = to == null ? null : Timestamp.valueOf(Mapping.local(to));
+        return query(sql, ps -> {
+            int i = 1;
+            for (int k = 0; k < 3; k++) ps.setString(i++, text == null ? null : text.replace("%", "\\%").replace("_", "\\_"));
+            ps.setString(i++, action); ps.setString(i++, action);
+            ps.setString(i++, incidentId); ps.setString(i++, incidentId);
+            ps.setObject(i++, userId, java.sql.Types.BIGINT); ps.setObject(i++, userId, java.sql.Types.BIGINT);
+            ps.setTimestamp(i++, fromTs); ps.setTimestamp(i++, fromTs);
+            ps.setTimestamp(i++, toTs); ps.setTimestamp(i++, toTs);
+            ps.setInt(i, limit);
+        }, rs -> {
+            List<AuditRow> list = new ArrayList<>();
+            while (rs.next()) list.add(new AuditRow(rs.getLong(1), rs.getString(2), instant(rs.getTimestamp(3)),
+                    rs.getObject(4) == null ? null : rs.getLong(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9)));
+            return list;
+        });
     }
 
     // ---- small JDBC helpers ----

@@ -24,7 +24,7 @@ public final class Views {
 
     public record SimilarView(String id, String title, String status, String priority) {}
 
-    public record ServiceView(long id, String name, String category, String criticality, int criticalityScore) {}
+    public record ServiceView(long id, String name, String category, String criticality, int criticalityScore, boolean tatkalBookingPath) {}
 
     public record TechnicianView(long id, String name, String email, String skill, int workload, int capacity,
                                  int experienceYears, boolean available) {}
@@ -33,11 +33,15 @@ public final class Views {
 
     public record NotificationList(List<NotificationView> items, long unread) {}
 
-    public record CategoryView(String code, String label, boolean active) {}
+    /** {@code team} is the technician skill that handles the category; {@code standard} marks the eight built-in ones. */
+    public record CategoryView(String code, String label, boolean active, String team, boolean standard) {}
 
     public record SlaPolicyView(String priority, int responseMinutes, int resolutionMinutes) {}
 
     public record SettingsView(String defaultAssignmentStrategy, List<String> assignmentStrategies) {}
+
+    public record AuditSearchView(long id, String incidentId, Instant at, Long actorId, String actorName, String action,
+                                  String fromStatus, String toStatus, String description) {}
 
     public record CreatedIncident(IncidentView incident, List<SimilarView> possibleDuplicates) {}
 

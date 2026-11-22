@@ -7,7 +7,7 @@ export const reporterRoles: Role[] = ['Employee', 'Customer'];
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
-export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE' | 'CHANGE_PRIORITY';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE' | 'CHANGE_PRIORITY' | 'EDIT';
 export type Criticality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export const criticalities: Criticality[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
@@ -57,9 +57,23 @@ export interface Incident {
 
 export interface CreatedIncident { incident: Incident; possibleDuplicates: SimilarIncident[] }
 
-export interface Service { id: number; name: string; category: string; criticality: Criticality; criticalityScore: number }
+export interface Service { id: number; name: string; category: string; criticality: Criticality; criticalityScore: number; tatkalBookingPath: boolean }
 
-export interface Category { code: string; label: string; active: boolean }
+/** {team} is the technician team (skill) that handles the category; {standard} marks the eight built-in ones. */
+export interface Category { code: string; label: string; active: boolean; team: string; standard: boolean }
+
+/** Technician teams. A technician has one; each category is handled by one. Codes as stored by the service. */
+export const teams: { code: string; label: string }[] = [
+  { code: 'APPLICATION', label: 'Application support' }, { code: 'PAYMENT', label: 'Payments' },
+  { code: 'DATABASE', label: 'Database' }, { code: 'NETWORK', label: 'Network' }, { code: 'SECURITY', label: 'Security' },
+  { code: 'AUTHENTICATION', label: 'Authentication' }, { code: 'API_INTEGRATION', label: 'API integration' },
+  { code: 'INFRASTRUCTURE', label: 'Infrastructure' }
+];
+
+export interface AuditSearchEntry {
+  id: number; incidentId: string; at: string; actorId: number | null; actorName: string | null; action: string;
+  fromStatus: string | null; toStatus: string | null; description: string | null;
+}
 
 export interface SlaPolicy { priority: Priority; responseMinutes: number; resolutionMinutes: number }
 

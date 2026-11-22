@@ -15,7 +15,7 @@ public final class DomainModelChecks {
     private static final Instant START=Instant.parse("2026-11-12T04:00:00Z");
     private static final Employee EMP=new Employee("Reporter","reporter@example.test");
     private static final Administrator ADMIN=new Administrator("Manager","manager@example.test");
-    private static final RailwayService SERVICE=new RailwayService("Tatkal",3);
+    private static final RailwayService SERVICE=new RailwayService("Tatkal",3,true);
     static Incident incident(Impact i,Urgency u,boolean sec,boolean peak){
         return new Incident("Payment failure","UPI payment callback is down",EMP,SERVICE,
             IncidentCategory.PAYMENT,i,u,1000,sec,peak,START);
@@ -92,6 +92,29 @@ public final class DomainModelChecks {
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.MEDIUM,false,false))==Priority.P2_HIGH,"score 12 P2");
         check(priority.calculate(incident(Impact.MEDIUM,Urgency.LOW,false,false))==Priority.P3_MEDIUM,"score 6 P3");
         check(priority.calculate(incident(Impact.LOW,Urgency.LOW,false,true))==Priority.P4_LOW,"Tatkal without maximum impact and urgency does not override");
+        RailwayService booking=new RailwayService("Tatkal booking engine",1,true), catering=new RailwayService("E-catering",1,false);
+        Incident onPath=new Incident("Booking down","Tatkal booking fails",EMP,booking,IncidentCategory.APPLICATION,Impact.HIGH,Urgency.HIGH,10,false,true,START);
+        Incident offPath=new Incident("Catering down","Menu does not load",EMP,catering,IncidentCategory.APPLICATION,Impact.HIGH,Urgency.HIGH,10,false,true,START);
+        check(onPath.isPeakTatkalIncident() && priority.calculate(onPath)==Priority.P1_CRITICAL,"Tatkal override applies to a booking-path service");
+        check(!offPath.isPeakTatkalIncident() && priority.calculate(offPath)==Priority.P3_MEDIUM,"Tatkal override ignored for a service outside the booking path (3x3x1=9 gives P3)");
+        IncidentCategory phishing=IncidentCategory.of(IncidentCategory.codeFor("Phishing e-mail"),"Phishing e-mail",Skill.SECURITY);
+        check(phishing.code().equals("PHISHING_E_MAIL") && phishing.isSecurity() && phishing.equals(IncidentCategory.of("PHISHING_E_MAIL","Other label",Skill.SECURITY)),
+            "an IT manager's new category gets a code, a team and value equality");
+        check(!IncidentCategory.of("MOBILE_APP","Mobile app",Skill.APPLICATION).isSecurity() && IncidentCategory.standard().size()==8,"only categories handled by security count as security");
+        throwsException(IllegalArgumentException.class,()->IncidentCategory.of("bad code","Bad",Skill.NETWORK),"invalid category code rejected");
+        Incident editable=incident(Impact.MEDIUM,Urgency.MEDIUM,false,false);
+        editable.classify(Priority.P2_HIGH,ADMIN,START);
+        editable.edit(EMP,"UPI payment failure","UPI callback times out after 30 seconds",null,START.plusSeconds(5));
+        check(editable.getTitle().equals("UPI payment failure") && editable.getAuditTrail().get(editable.getAuditTrail().size()-1).action().equals("EDITED"),
+            "reporter corrects title and description before acknowledgement");
+        throwsException(UnauthorizedIncidentOperationException.class,()->editable.edit(EMP,null,null,IncidentCategory.DATABASE,START.plusSeconds(6)),
+            "reporter cannot change the category");
+        throwsException(UnauthorizedIncidentOperationException.class,()->editable.edit(new Employee("Other","other@example.test"),"Other title",null,null,START.plusSeconds(6)),
+            "another employee cannot edit");
+        throwsException(IllegalArgumentException.class,()->editable.edit(EMP,"UPI payment failure",null,null,START.plusSeconds(6)),"an edit must change something");
+        editable.edit(ADMIN,null,null,IncidentCategory.SECURITY,START.plusSeconds(7));
+        check(editable.getCategory()==IncidentCategory.SECURITY && editable.isCriticalSecurityIncident() && new RailwayPriorityStrategy().calculate(editable)==Priority.P1_CRITICAL,
+            "IT manager recategorises to security; the security rule now gives P1");
         Incident ask=incident(Impact.HIGH,Urgency.HIGH,false,false);
         ask.classify(priority.calculate(ask),ADMIN,START);
         Technician helper=new Technician("Helper","helper@example.test",Set.of(Skill.PAYMENTS),3);

@@ -7,7 +7,6 @@ import type { SessionRepository, UserDirectory, UserRepository } from './reposit
 import { adminUserRoutes } from './routes/adminUsers.ts';
 import { authRoutes } from './routes/auth.ts';
 import { incidentRoutes } from './routes/incidents.ts';
-import { plannedRoutes } from './routes/planned.ts';
 
 export const DEV_INTERNAL_TOKEN = 'dev-internal-token';
 
@@ -37,7 +36,7 @@ export function createApp(deps: AppDeps): Express {
   const api = express.Router();
   api.get('/health', (_req, res) => { res.json({ status: 'ok', time: new Date().toISOString() }); });
   api.use('/auth', authRoutes(auth));
-  api.use(requireAuth(auth), requireCurrentPassword, adminUserRoutes(deps.users, deps.users, incidents), incidentRoutes(incidents), plannedRoutes());
+  api.use(requireAuth(auth), requireCurrentPassword, adminUserRoutes(deps.users, deps.users, incidents), incidentRoutes(incidents));
 
   app.use('/api/v1', api);
   app.use(notFound);

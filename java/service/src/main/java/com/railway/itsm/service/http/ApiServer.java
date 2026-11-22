@@ -71,6 +71,8 @@ public final class ApiServer {
         route("POST", "/incidents/{id}/transitions", 200, r -> workflow.transition(r.actor(), r.id(), r.text("action"), r.text("summary"), r.text("rootCause")));
         route("POST", "/incidents/{id}/notes", 200, r -> workflow.addNote(r.actor(), r.id(), r.text("text")));
         route("POST", "/incidents/{id}/messages", 200, r -> workflow.sendMessage(r.actor(), r.id(), r.text("text")));
+        route("PATCH", "/incidents/{id}", 200, r -> workflow.edit(r.actor(), r.id(), r.text("title"), r.text("description"), r.text("category")));
+        route("GET", "/audit", 200, r -> workflow.searchAudit(r.actor(), r.query()));
         route("POST", "/incidents/{id}/priority", 200, r -> workflow.changePriority(r.actor(), r.id(), r.text("priority"), r.text("reason")));
         route("POST", "/incidents/{id}/feedback", 200, r -> workflow.feedback(r.actor(), r.id(), r.integer("rating")));
         route("GET", "/incidents/{id}/similar", 200, r -> workflow.similar(r.actor(), r.id()));
@@ -88,12 +90,13 @@ public final class ApiServer {
 
         // Administration (IT manager). User accounts are managed by the Node API, which owns passwords.
         route("GET", "/admin/services", 200, r -> workflow.adminServices(r.actor()));
-        route("POST", "/admin/services", 201, r -> workflow.createService(r.actor(), r.text("name"), r.text("category"), r.text("criticality")));
-        route("PATCH", "/admin/services/{id}", 200, r -> workflow.updateService(r.actor(), Long.parseLong(r.id()), r.text("name"), r.text("category"), r.text("criticality")));
+        route("POST", "/admin/services", 201, r -> workflow.createService(r.actor(), r.text("name"), r.text("category"), r.text("criticality"), r.bool("tatkalBookingPath")));
+        route("PATCH", "/admin/services/{id}", 200, r -> workflow.updateService(r.actor(), Long.parseLong(r.id()), r.text("name"), r.text("category"), r.text("criticality"), r.bool("tatkalBookingPath")));
         route("GET", "/admin/sla-policies", 200, r -> workflow.slaPolicies(r.actor()));
         route("PUT", "/admin/sla-policies/{id}", 200, r -> workflow.updateSlaPolicy(r.actor(), r.id(), r.integer("responseMinutes"), r.integer("resolutionMinutes")));
         route("GET", "/admin/categories", 200, r -> workflow.adminCategories(r.actor()));
-        route("PATCH", "/admin/categories/{id}", 200, r -> workflow.updateCategory(r.actor(), r.id(), r.text("label"), r.bool("active")));
+        route("POST", "/admin/categories", 201, r -> workflow.createCategory(r.actor(), r.text("label"), r.text("team")));
+        route("PATCH", "/admin/categories/{id}", 200, r -> workflow.updateCategory(r.actor(), r.id(), r.text("label"), r.bool("active"), r.text("team")));
         route("GET", "/admin/settings", 200, r -> workflow.settings(r.actor()));
         route("PUT", "/admin/settings", 200, r -> workflow.updateSettings(r.actor(), r.text("defaultAssignmentStrategy")));
         route("PUT", "/admin/technicians/{id}", 200, r -> workflow.saveTechnicianProfile(r.actor(), Long.parseLong(r.id()), r.text("skill"), r.integer("experienceYears"), r.bool("available")));

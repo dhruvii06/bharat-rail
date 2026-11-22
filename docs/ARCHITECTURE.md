@@ -1,14 +1,17 @@
-# Architecture and frontend handoff
+# Architecture
 
 ## Scope and assumptions
 
-An internal employee/support portal for ticketing IT incidents, not a passenger ticket-booking clone. Manager represents the Administrator / IT Manager course role. IRCTC incident examples and P1–P4 priorities are scenario inputs; SLA targets are illustrative course values, not official IRCTC policy. Course brief requirements describe the eventual delivery and do not imply the starter implements them all.
+Bharat Rail ITSM is an IT service management system for a railway operator's IT services (booking, payment, database, enquiry and network systems). It is not a train-booking application or a general railway complaint portal: it handles IT incidents such as a payment gateway timing out or the PNR service failing because of a database outage.
+
+Users are employees, customers (members of the public who report an IT problem they ran into), technicians and the IT manager (the course's Administrator role). Bharat Rail, its services and the SLA targets are fictional course values, not official policy of any real operator.
 
 ## Component view
 
 ```mermaid
 flowchart LR
   E[Employee] --> UI[React UI]
+  C[Customer] --> UI
   T[Technician] --> UI
   M[IT Manager] --> UI
   UI -->|/api/v1 + bearer token| API[Node API: auth, sessions, role checks]
@@ -24,23 +27,54 @@ flowchart LR
   SLA[SLA monitor] --> WF
 ```
 
-## Navigation and ownership
+The Node API owns sign-in, sessions, passwords and accounts, and checks the caller's role on every route. The Java service owns every incident rule. It rebuilds the domain `Incident` from the database, lets the domain validate the action, and stores the result. Each command runs in one database transaction (`DatabaseConnection.inTransaction`). The incident, its history entries and its notifications are committed together or not at all. See [API.md](API.md) for the endpoints.
+
+## Screens
 
 | Route | Audience | Purpose |
 | --- | --- | --- |
 | `/` | All | Role overview and recent incidents |
-| `/incidents` | All | Own reports, assigned work, or manager queue |
-| `/incidents/new` | Employee | Create incident and preview priority |
-| `/incidents/:id` | Scoped by role | Details, deadlines, resolution and history |
-| `/management` | Manager | Workload summary and future configuration scope |
+| `/incidents` | All | Own reports, assigned work, or the manager's queue |
+| `/incidents/new` | Employee, Customer | Staff enter impact and urgency; customers only describe what happened |
+| `/incidents/:id` | Scoped by role | Details, deadlines, conversation, history and the actions the user may take |
+| `/management` | IT Manager | Workload, SLA and resolution reports |
+| `/admin` | IT Manager | Accounts, technician teams, services, SLA policies, categories, assignment strategy, audit log |
+| `/impact-simulator` | IT Manager | What-if view of which services depend on a failing one |
+| `/account` | All | Change password |
 
-Frontend owner: components, page layouts, responsive behavior, form validation, API adapter, loading/error/empty states, accessibility and integration. Backend owner: authentication, authorization on every request, authoritative rules, data transactions, scheduling, notifications and database. Domain/OOP owner: state model, priority policy, strategy contracts and UML. Agree on API contracts before parallel implementation.
+## Priority
 
-## Domain behavior
+The system sets every priority; nobody types one in. `RailwayPriorityStrategy` multiplies impact × urgency × service criticality, each 1–3:
 
-Creation classifies the incident immediately. Default priority uses impact × urgency × criticality with inputs 1–3: score >=18 is P1, >=8 is P2, >=3 is P3, otherwise P4. This is a proposed, explainable policy and can be refined for Tatkal, security and affected-user context. There is no AI/ML claim. Business impact, urgency and criticality currently need explicit human input.
+| Score | Priority |
+| --- | --- |
+| ≥ 20 | P1 |
+| ≥ 10 | P2 |
+| ≥ 5 | P3 |
+| below 5 | P4 |
 
-SLA response/resolution targets in minutes: P1 5/30, P2 15/120, P3 60/480, P4 240/1440. Deadlines start at creation. A late acknowledgement or late resolution remains a recorded violation even after completion. UI refreshes deadline indicators every minute and on actions; there is no background escalation yet.
+Two rules override the score with P1:
+
+- **Security:** the incident's category is handled by the security team.
+- **Tatkal window:** the incident was reported during the Tatkal window (the first 30 minutes after 10:00 and 11:00 IST), has high impact and high urgency, and is on a service that Tatkal bookings depend on. The IT manager marks those services (booking engine, payment gateway and core database in the demo data). A fault in catering or enquiry at 10:05 is judged on its score alone.
+
+- **Staff** (employees) rate impact and urgency.
+- **Customers** answer plain questions instead: how it affected them, whether money was taken, and whether it is still happening. `CustomerReportAssessment` turns these into impact and urgency. The category comes from the service.
+
+The incident page explains each priority. The IT manager can override a priority with a reason, and changing an incident's category recalculates it.
+
+## SLA
+
+Response and resolution targets per priority are set by the IT manager. The defaults are P1 5/30, P2 15/120, P3 60/480 and P4 240/1440 minutes.
+
+- Deadlines start when the incident is reported. Changing the priority recalculates them from that time.
+- Every 30 seconds, the SLA monitor:
+  - warns 5 minutes before a resolution deadline;
+  - records a violation once;
+  - escalates P1/P2 incidents that were not acknowledged in time.
+- A late response or resolution stays a recorded violation.
+
+## Lifecycle
 
 ```mermaid
 stateDiagram-v2
@@ -53,18 +87,64 @@ stateDiagram-v2
   VERIFIED --> CLOSED: manager closes
 ```
 
-The demo offers skill-based (first available category match) and load-based (fewest active incidents) assignment implementations. Skill-based is wired as default; changing strategies is currently a code-level composition choice. Load-based is not skill-aware. A future manager UI should configure the choice and surface no-candidate outcomes.
+These steps can happen while the incident is open:
+
+- the technician can ask the reporter for information and wait for the answer;
+- the reporter and the IT team can exchange messages;
+- staff can add internal notes;
+- the reporter can correct the title and description until a technician acknowledges the incident;
+- the IT manager can edit any open incident, including its category.
+
+## Assignment
+
+The IT manager can assign an incident in three ways:
+
+- **Skill-based:** the first available technician in the team that handles the incident's category.
+- **Load-based:** the matching technician with the fewest active incidents.
+- **A named technician.**
+
+The default strategy is set in the admin settings. Each category is handled by one team, so a category the IT manager adds is routed with no code change.
 
 ## OOP design
 
-Current code demonstrates Strategy (`AssignmentStrategy`, `SkillBasedAssignment`, `LoadBasedAssignment`), abstraction (`IncidentApi`) and composition (inject an assignment strategy into `MockIncidentApi`). UI uses domain functions and typed DTOs. Do not present this starter as a complete implementation of all OOP requirements.
+| Concept | Where |
+| --- | --- |
+| Encapsulation | `Incident` keeps its state private; every change goes through a method that checks the actor and the current status (`assign`, `acknowledge`, `resolve`, `edit`, `changePriority` …) |
+| Inheritance | `User` → `Reporter` (`Employee`, `Customer`), `Technician`, `Administrator` |
+| Polymorphism | `PriorityStrategy`, `AssignmentStrategy` and `NotificationSender` implementations are used through their interfaces |
+| Strategy | `RailwayPriorityStrategy`; `SkillBasedAssignmentStrategy` and `LoadBasedAssignmentStrategy` |
+| Observer | `EventPublisher` notifies the in-app and simulated email senders; `NotificationPolicy` decides who receives each event |
+| Template Method | `StoredNotificationSender` defines delivery; subclasses choose the channel |
+| Repository | Repository interfaces with PostgreSQL implementations (and an in-memory one for the domain demo) |
+| Adapter | `Snapshot` maps database rows to domain objects and back |
+| Unit of Work | `DatabaseConnection.inTransaction` gives every repository call in a command the same connection and transaction |
+| Value object | `IncidentCategory`: eight standard categories plus ones the IT manager adds, compared by code |
+| Custom exceptions | `DomainException` subclasses map to HTTP 403 / 409 / 422 |
 
-Planned server: an encapsulated `Incident` aggregate validates state changes; `IncidentService` composes `PriorityPolicy`, `AssignmentStrategy`, `IncidentRepository` and `EventPublisher`. Repository is the second planned design pattern; Observer subscribers handle audit and two notification adapters. A `User` base abstraction with Employee/Technician/Manager specializations is appropriate only if distinct behavior justifies inheritance; do not add empty subclasses merely for a rubric.
+## Database
 
-Proposed database entities: User (role, password hash), TechnicianProfile (availability, skills), Service (criticality), Category, Incident (reporter/service/category/assignee/SLA-policy FKs, factors and timestamps), SlaPolicy, AuditEvent, Notification. Incident has many audit events and notifications. Persist incident changes and audit events atomically; server enforces actor identity from its session.
+The base tables are created by `schema.sql` and `seed.sql`. `integration.sql` adds:
 
-## Technology rationale
+- incident extras: acknowledgement time, affected users, the open information request;
+- notifications;
+- categories, with the team that handles each one;
+- settings;
+- the Tatkal booking-path flag on services;
+- account status and the forced password change.
 
-React supports reusable role-specific components; TypeScript gives the frontend/backend an explicit shared contract; Vite provides a small local dev/build setup. A modular monolith REST backend is adequate for this team and avoids distributed transactions. PostgreSQL is proposed for relational integrity and reporting. Java/Spring Boot remains a reasonable backend alternative if the team wants stronger class-based domain conventions. TypeScript requires deliberate runtime validation because types disappear at runtime.
+`npm run db:setup` applies all three and is safe to re-run.
 
-Before real use: server sessions or reviewed token authentication, hashed passwords, request validation, role and ownership checks, protected audit records, database migrations, rate limits, secure deployment, pagination and automated integration tests. Frontend role visibility and local audit entries provide no security guarantee.
+## Before real use
+
+This is a course project:
+
+- Email is simulated.
+- Passwords are hashed with scrypt, and sessions are random tokens stored as hashes.
+
+A production system would also need:
+
+- TLS;
+- a managed secret store;
+- pagination on the larger lists;
+- rate limits beyond login;
+- monitoring.

@@ -20,6 +20,7 @@ public final class NotificationPolicy {
     private static final Map<String, Rule> RULES = Map.ofEntries(
             Map.entry("CREATED", new Rule(Set.of(Audience.MANAGERS), Set.of(Audience.MANAGERS))),
             Map.entry("RECEIVED", new Rule(Set.of(Audience.REPORTER), NONE)),
+            Map.entry("INCIDENT_EDITED", new Rule(Set.of(Audience.ASSIGNEE), NONE)),
             Map.entry("PRIORITY_CHANGED", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), Set.of(Audience.ASSIGNEE))),
             Map.entry("MESSAGE_FROM_REPORTER", new Rule(Set.of(Audience.ASSIGNEE), Set.of(Audience.ASSIGNEE))),
             Map.entry("MESSAGE_UNASSIGNED", new Rule(Set.of(Audience.MANAGERS), NONE)),

@@ -29,6 +29,7 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/incidents` | Employee | `{title, description, serviceId, category, impact 1-3, urgency 1-3, affectedUsers?, tatkalWindow?}` → 201 `{incident, possibleDuplicates}`. Priority from `RailwayPriorityStrategy`, SLA deadlines from the priority, duplicates from `IncidentManagementService` |
 | POST | `/incidents` | Customer | `{title, description, serviceId, effect: BLOCKED / DEGRADED / MINOR, moneyTaken, stillHappening}`. Customers only describe: `CustomerReportAssessment` sets impact and urgency, the category comes from the service, and any impact, urgency, category, affected-user or Tatkal values they send are ignored |
 | GET | `/incidents/:id` | all (if visible) | Detail with `history`, `resolution`, `allowedActions` and `similar` |
+| PATCH | `/incidents/:id` | Reporter, Manager | `{title?, description?, category?}`. The reporter may correct title and description while the incident is new, classified or assigned (not after a technician acknowledges it); the IT manager may edit any open incident and is the only one who may change the category. A category change recalculates the priority (unless the manager had overridden it) and its deadlines. Recorded as INCIDENT_EDITED; the assigned technician is notified. Technicians get 403 |
 | POST | `/incidents/:id/assignment` | Manager | `{strategy: "skill" \| "load"}` or `{technicianId}` |
 | POST | `/incidents/:id/priority` | Manager | `{priority: P1-P4, reason}`. Overrides the calculated priority while the incident is open (classified to in progress); reason required; same priority refused. Deadlines are recalculated from creation time with the configured SLA targets. Recorded as PRIORITY_CHANGED; the assigned technician and managers are notified ("Priority changed"), the reporter is not |
 | POST | `/incidents/:id/transitions` | by action | `{action: "ACKNOWLEDGE" \| "START" \| "RESOLVE" \| "VERIFY" \| "CLOSE"}`; RESOLVE also needs `summary` (10–4000) and `rootCause` (3–2000) |
@@ -44,6 +45,7 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/notifications/:id/read`, `/notifications/read-all` | all | Mark read → 204 |
 | GET | `/notifications/outbox` | Manager | Simulated email channel |
 | GET | `/reports/overview` | Manager | Totals, SLA compliance, average resolution time, by service / priority / status, workload |
+| GET | `/audit` | Manager | Audit trail across all incidents, newest first. Optional filters: `q` (text in the entry or incident title), `action`, `incidentId`, `userId`, `from` / `to` (dates, inclusive), `limit` (1–500, default 200) |
 
 ## Customer view
 
@@ -54,20 +56,20 @@ For customers the service removes triage data from every response: `priority`, `
 | Method | Endpoint | Handled by | Behaviour |
 | --- | --- | --- | --- |
 | GET | `/admin/users` | Node | All accounts with department and active flag |
-| POST | `/admin/users` | Node (+ Java for the technician profile) | `{name, email, password, role, department?, skill?, experienceYears?}`; `skill` required for technicians |
+| POST | `/admin/users` | Node (+ Java for the technician profile) | `{name, email, password, role, department?, skill?, experienceYears?}`; `skill` (the technician's team) required for technicians |
 | PATCH | `/admin/users/:id` | Node | `{name?, department?, active?}`; deactivated accounts are signed out and cannot sign in or be assigned; you cannot deactivate yourself |
 | PUT | `/admin/technicians/:id` | Java | `{skill?, experienceYears?, available?}`; workload is kept |
-| GET / POST | `/admin/services` | Java | `{name, category, criticality: CRITICAL / HIGH / MEDIUM / LOW}` |
-| PATCH | `/admin/services/:id` | Java | Any of name, category, criticality |
+| GET / POST | `/admin/services` | Java | `{name, category, criticality: CRITICAL / HIGH / MEDIUM / LOW, tatkalBookingPath?}`; `tatkalBookingPath` marks services Tatkal bookings depend on (only these get the Tatkal-window P1 rule) |
+| PATCH | `/admin/services/:id` | Java | Any of name, category, criticality, tatkalBookingPath |
 | GET | `/admin/sla-policies` | Java | Targets per priority in minutes |
 | PUT | `/admin/sla-policies/:priority` | Java | `{responseMinutes, resolutionMinutes}`; resolution must be longer; applies to new incidents only |
-| GET | `/admin/categories` | Java | All categories with label and on/off |
-| PATCH | `/admin/categories/:code` | Java | `{label?, active?}`; switched-off categories can't be reported; at least one must stay on |
+| GET | `/admin/categories` | Java | All categories: `{code, label, active, team, standard}` |
+| POST | `/admin/categories` | Java | `{label, team}`; adds a category handled by a technician team (APPLICATION, PAYMENT, DATABASE, NETWORK, SECURITY, AUTHENTICATION, API_INTEGRATION, INFRASTRUCTURE). The code is made from the label (e.g. "Mobile app" → MOBILE_APP). Categories handled by SECURITY count as security incidents. 409 if the name or code exists |
+| PATCH | `/admin/categories/:code` | Java | `{label?, active?, team?}`; switched-off categories can't be reported; at least one must stay on |
 | GET / PUT | `/admin/settings` | Java | `{defaultAssignmentStrategy: "skill" \| "load"}`, used when Assign is pressed without a choice |
 
 `GET /categories` (all roles) returns only active categories as `{code, label}`.
 
-Not built yet (role-checked, return 501): `PATCH /incidents/:id`, `/audit`.
 
 ## Lifecycle and who may act
 
@@ -86,7 +88,6 @@ Not built yet (role-checked, return 501): `PATCH /incidents/:id`, `/audit`.
 | 409 | INVALID_TRANSITION, NO_TECHNICIAN_AVAILABLE, CONFLICT | Domain rule refused the action |
 | 422 | VALIDATION_FAILED | Invalid input |
 | 429 | TOO_MANY_REQUESTS | Login lockout |
-| 501 | NOT_IMPLEMENTED | Planned endpoint |
 | 503 | SERVICE_UNAVAILABLE / DATABASE_UNAVAILABLE | Java service or database down |
 
 ## Background SLA monitor

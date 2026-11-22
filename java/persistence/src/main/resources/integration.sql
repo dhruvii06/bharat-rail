@@ -66,6 +66,17 @@ INSERT INTO categories (code, label) VALUES
 ('INFRASTRUCTURE', 'Infrastructure')
 ON CONFLICT (code) DO NOTHING;
 
+-- Each category is handled by one technician team (skill). New categories added by the IT manager
+-- choose their team; the eight standard categories are handled by the team of the same name.
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS skill VARCHAR(30);
+UPDATE categories SET skill = code WHERE skill IS NULL;
+ALTER TABLE categories ALTER COLUMN skill SET NOT NULL;
+
+-- Services a Tatkal booking depends on. Only incidents on these services get the Tatkal-window P1 override.
+ALTER TABLE it_services ADD COLUMN IF NOT EXISTS tatkal_path BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE it_services SET tatkal_path = TRUE
+WHERE service_name IN ('TATKAL_BOOKING_ENGINE', 'UPI_PAYMENT_GATEWAY', 'NGET_CORE_DATABASE') AND tatkal_path = FALSE;
+
 -- System settings, such as the default assignment strategy.
 CREATE TABLE IF NOT EXISTS settings (
     setting_key VARCHAR(50) PRIMARY KEY,

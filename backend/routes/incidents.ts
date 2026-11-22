@@ -17,6 +17,7 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('get', '/incidents', ALL);                              // role-scoped queue, filters as query string
   route('post', '/incidents', REPORTERS);                      // report: classify, prioritise, find duplicates
   route('get', '/incidents/:id', ALL);                          // detail, history, allowed actions
+  route('patch', '/incidents/:id', [...REPORTERS, 'Manager']);  // {title?, description?, category? (manager)}: correct the report
   route('post', '/incidents/:id/assignment', ['Manager']);      // {strategy: skill|load} or {technicianId}
   route('post', '/incidents/:id/priority', ['Manager']);        // {priority: P1-P4, reason}: IT manager override
   route('post', '/incidents/:id/transitions', ALL);             // {action: ACKNOWLEDGE|START|RESOLVE|VERIFY|CLOSE}
@@ -38,15 +39,17 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('post', '/notifications/:id/read', ALL);
 
   route('get', '/reports/overview', ['Manager']);
+  route('get', '/audit', ['Manager']);                          // audit trail of all incidents: q, action, incidentId, userId, from, to, limit
 
   // Administration (Manager only). User accounts are handled in routes/adminUsers.ts.
   route('get', '/admin/services', ['Manager']);
-  route('post', '/admin/services', ['Manager']);                // {name, category, criticality}
+  route('post', '/admin/services', ['Manager']);                // {name, category, criticality, tatkalBookingPath?}
   route('patch', '/admin/services/:id', ['Manager']);
   route('get', '/admin/sla-policies', ['Manager']);
   route('put', '/admin/sla-policies/:id', ['Manager']);         // :id = P1..P4, {responseMinutes, resolutionMinutes}
   route('get', '/admin/categories', ['Manager']);
-  route('patch', '/admin/categories/:id', ['Manager']);         // {label?, active?}
+  route('post', '/admin/categories', ['Manager']);              // {label, team}: new category handled by a technician team
+  route('patch', '/admin/categories/:id', ['Manager']);         // {label?, active?, team?}
   route('get', '/admin/settings', ['Manager']);
   route('put', '/admin/settings', ['Manager']);                 // {defaultAssignmentStrategy}
   route('put', '/admin/technicians/:id', ['Manager']);          // {skill?, experienceYears?, available?}
