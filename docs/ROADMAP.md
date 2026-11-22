@@ -45,7 +45,7 @@ The service, API and test runner require separate terminals unless launched by a
 - [ ] Capture output of the end-to-end suites against a clean PostgreSQL/Java/Node environment.
 - [ ] Manually test the React website in light and dark mode, on desktop/mobile and across all four roles.
 - [ ] Render and verify the latest UML class diagram in `java/domain/docs/domain-class-diagram.mmd`, plus a use case diagram.
-- [ ] Add the final database schema/ER diagram with real table relationships.
+- [x] ER diagram source added at `docs/ER-DIAGRAM.mmd`; render and proofread against schema before final PDF.
 - [ ] Document at least 15 meaningful test cases and include actual pass/fail evidence.
 - [ ] Include a technology selection report, architecture, security considerations and how OOP concepts are applied.
 - [ ] Record at least three complete end-to-end workflows, including reporting through closure.
