@@ -1,6 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { useAuth } from '../auth';
 import { api } from '../data/api';
+import { BrandLogo } from '../components/BrandLogo';
+import { ThemeToggle } from '../components/ThemeToggle';
 
 // Sign-in and customer self-registration (design by Dhruvi). Members of the public register as
 // Customers to report problems; employee, technician and manager accounts are created by the IT manager.
@@ -44,7 +46,8 @@ export function Login() {
   function toggle() { setRegister(r => !r); setError(''); setNotice(''); setPassword(''); }
 
   return <div className="auth-shell">
-    <div className="auth-brand">BR <span>Bharat Rail</span></div>
+    <ThemeToggle className="auth-theme-toggle" />
+    <BrandLogo className="auth-brand-logo" />
     <div className="auth-panel">
       <div className="eyebrow">IT SERVICE MANAGEMENT</div>
       <h1>{register ? 'Create a customer account' : 'Sign in'}</h1>

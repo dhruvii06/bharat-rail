@@ -1,0 +1,151 @@
+/* Bharat Rail ITSM dual theme: all selectors are scoped to the document's theme. */
+:root {
+  --br-surface: #fff;
+  --br-surface-muted: #edf0f4;
+  --br-surface-hover: #f8fafc;
+  --br-text: #293746;
+  --br-muted: #647182;
+  --br-soft-border: #e5e9ee;
+  --br-input-border: #bfc8d3;
+  --br-header: #cdeaea;
+  --br-header-text: #0f3a3f;
+  --br-header-muted: #2c5458;
+  --br-header-border: #8fc3c4;
+  --br-header-hover: #b8dfdf;
+}
+:root[data-theme="dark"] {
+  --br-header: #0b3b40;
+  --br-header-text: #ffffff;
+  --br-header-muted: #bfe0e1;
+  --br-header-border: #2e6b70;
+  --br-header-hover: #135058;
+  --line: #31445a;
+  --accent: #7fb9d2;
+  --br-surface: #172538;
+  --br-surface-muted: #24364b;
+  --br-surface-hover: #24374d;
+  --br-text: #e6edf6;
+  --br-muted: #b2bfd0;
+  --br-soft-border: #304257;
+  --br-input-border: #52657b;
+  background: #0e1a2a;
+  color-scheme: dark;
+}
+:root {color-scheme:light}
+html[data-theme="dark"] body {background:#0e1a2a;color:var(--br-text)}
+html[data-theme="light"] body {background:#f5f6f8;color:#293746}
+body {transition:background-color .18s ease,color .18s ease}
+header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px solid var(--line);box-shadow:0 1px 4px rgba(8,20,35,.05)}
+.header-brand{display:flex;align-items:center;width:255px;max-width:40vw;min-width:0;min-height:44px}
+.header-brand-logo{display:block;width:100%;height:52px;object-fit:contain;object-position:left center}
+.header-brand:hover{text-decoration:none}
+.brand-logo{object-fit:contain;display:block}
+.theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;background:transparent;color:var(--br-header-text);border:1px solid var(--line);font-size:12px;font-weight:500;min-height:34px;border-radius:6px;padding:6px 10px;cursor:pointer}
+.theme-toggle:hover{background:var(--br-surface-muted);color:var(--br-text)}
+.theme-toggle svg{flex:none}
+/* Everything in the top bar takes its colours from the --br-header-* tokens, teal, the opposite of the logo's orange: a light shade in light mode and a deep shade in dark mode.
+   The :root[data-theme] prefix outranks the general dark-mode rules for small text, links and buttons. */
+:root[data-theme] header .header-button,:root[data-theme] header .theme-toggle{background:transparent;color:var(--br-header-text);border-color:var(--br-header-border)}
+:root[data-theme] header .header-button:hover,:root[data-theme] header .theme-toggle:hover{background:var(--br-header-hover);color:var(--br-header-text)}
+:root[data-theme] header .who{color:var(--br-header-text)}
+:root[data-theme] header .who small,:root[data-theme] header .who-link{color:var(--br-header-muted)}
+:root[data-theme] header .who-link:hover{color:var(--br-header-text)}
+.auth-shell{background:var(--br-surface-muted);position:relative}
+.auth-brand-logo{display:block;width:min(460px,94vw);height:auto;max-height:128px;object-fit:contain;margin:0 0 26px}
+.auth-theme-toggle{position:absolute;right:24px;top:24px;color:var(--br-text)}
+.auth-panel{background:var(--br-surface);border-color:var(--line)}
+.auth-footer{color:var(--br-muted)}
+:root[data-theme="dark"] nav{background:#142236}
+:root[data-theme="dark"] nav>a{color:#c4d1e0}
+:root[data-theme="dark"] nav>a:hover{background:#24374d}
+:root[data-theme="dark"] nav>a.active{background:#294056;color:#b1e1f8}
+:root[data-theme="dark"] .nav-label{color:#afbdd0}
+:root[data-theme="dark"] .nav-bottom{border-color:var(--line);color:#c1cfdf}
+:root[data-theme="dark"] .nav-bottom span{color:#a9bbce}
+:root[data-theme="dark"] .eyebrow{color:#aabdd0}
+:root[data-theme="dark"] .muted,:root[data-theme="dark"] small,:root[data-theme="dark"] .fact dt,
+:root[data-theme="dark"] .sla-normal,:root[data-theme="dark"] .workflow,
+:root[data-theme="dark"] .auth-footer,:root[data-theme="dark"] footer{color:var(--br-muted)}
+:root[data-theme="dark"] .metrics section,:root[data-theme="dark"] .table-wrap,
+:root[data-theme="dark"] .actions-panel,:root[data-theme="dark"] .admin-form,
+:root[data-theme="dark"] .impact-card,:root[data-theme="dark"] .impact-metrics section,
+:root[data-theme="dark"] .choice-group,:root[data-theme="dark"] .bubble,
+:root[data-theme="dark"] .dropdown{background:var(--br-surface);color:var(--br-text);border-color:var(--line)}
+:root[data-theme="dark"] .metrics span,:root[data-theme="dark"] .impact-metrics section span,
+:root[data-theme="dark"] .impact-graph .impact-stage{color:#bdc9d8}
+:root[data-theme="dark"] th{background:#24374d;color:#d0dced}
+:root[data-theme="dark"] th,:root[data-theme="dark"] td,
+:root[data-theme="dark"] .service-row,:root[data-theme="dark"] .fact,
+:root[data-theme="dark"] .action-form,:root[data-theme="dark"] .history li,
+:root[data-theme="dark"] .demo-accounts li,:root[data-theme="dark"] .dropdown-head,
+:root[data-theme="dark"] .impact-paths li{border-color:var(--br-soft-border)}
+:root[data-theme="dark"] tbody tr:hover{background:var(--br-surface-hover)}
+:root[data-theme="dark"] td:first-child>a{color:#acd7f0}
+:root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="dark"] select,:root[data-theme="dark"] textarea{
+  background:#101f31;color:#e6edf6;border-color:var(--br-input-border)
+}
+:root[data-theme="dark"] input::placeholder,:root[data-theme="dark"] textarea::placeholder{color:#9aaec2;opacity:1}
+:root[data-theme="dark"] input:disabled,:root[data-theme="dark"] select:disabled,
+:root[data-theme="dark"] textarea:disabled{opacity:.65}
+:root[data-theme="dark"] button.secondary,:root[data-theme="dark"] .dropdown li button{
+  background:#24364b;color:#d4e6f3;border-color:#52657b
+}
+:root[data-theme="dark"] button.secondary:hover,:root[data-theme="dark"] .dropdown li button:hover{background:#304b63}
+:root[data-theme="dark"] .dropdown li.unread button{background:#1c3b55}
+:root[data-theme="dark"] .status-tag,:root[data-theme="dark"] .badge:not(.P1):not(.P2):not(.P3):not(.P4){background:#29394d;color:#e1e9f3;border-color:#516178}
+:root[data-theme="dark"] .P1{background:#572b36;border-color:#a5545b;color:#ffbabe}
+:root[data-theme="dark"] .P2{background:#59402c;border-color:#af7542;color:#ffcf9b}
+:root[data-theme="dark"] .P3{background:#554b28;border-color:#ab964f;color:#ffe6a6}
+:root[data-theme="dark"] .P4{background:#294b3c;border-color:#4e9474;color:#b4edd0}
+:root[data-theme="dark"] .notice-box{background:#1e4034;color:#d5f5e5;border-color:#42795e}
+:root[data-theme="dark"] .warning-box{background:#413020;color:#ffe0b9;border-color:#986632}
+:root[data-theme="dark"] .error{background:#49252d;color:#ffd1d4;border-color:#aa5a65}
+:root[data-theme="dark"] .saved{color:#a9e7bd}
+:root[data-theme="dark"] .pill{background:#254536;color:#b7ecca;border-color:#56866b}
+:root[data-theme="dark"] .pill.off{background:#502934;color:#ffc2c9;border-color:#a55e66}
+:root[data-theme="dark"] .admin-tabs button{color:#c5d4e4}
+:root[data-theme="dark"] .admin-tabs button:hover{background:#22354a}
+:root[data-theme="dark"] .admin-tabs button[aria-selected="true"]{color:#b6e3f9}
+:root[data-theme="dark"] .messages li.mine .bubble{background:#274159;border-color:#45657a}
+:root[data-theme="dark"] .impact-node{background:#203348;color:#dbe6f2;border-color:#45657a}
+:root[data-theme="dark"] .impact-node strong{color:#f1f5fb}
+:root[data-theme="dark"] .impact-node span{color:#c4d0df}
+:root[data-theme="dark"] .impact-node.failed{background:#4c2935;border-color:#c16871}
+:root[data-theme="dark"] .impact-node.direct{background:#463527;border-color:#c58a45}
+:root[data-theme="dark"] .impact-node.indirect{background:#42402b;border-color:#b4a968}
+:root[data-theme="dark"] .impact-node.clear{background:#22354b;color:#c3d2e0}
+:root[data-theme="dark"] .impact-priority.P1{color:#ffc4c6}
+:root[data-theme="dark"] .impact-priority.P2{color:#ffce91}
+:root[data-theme="dark"] .impact-priority.P3{color:#ffe1a0}
+:root[data-theme="dark"] .impact-priority.P4{color:#b9efc8}
+:root[data-theme="dark"] .impact-demo-pill{background:#3b2b24;color:#ffcfa1;border-color:#805638}
+:root[data-theme="dark"] .empty-state{color:var(--br-text)}
+:root[data-theme="dark"] .auth-alert{background:#3f2533;color:#ffdce5;border-color:#b55f77}
+:root[data-theme="dark"] .dropdown .type{color:#9bd7f1}
+:root[data-theme="dark"] a{color:#9acde8}
+:root[data-theme="dark"] a:hover{color:#c5edff}
+:root[data-theme="dark"] nav>a{color:#c4d1e0}
+:root[data-theme="dark"] nav>a.active{color:#b1e1f8}
+@media(max-width:700px){
+  .header-brand{width:min(240px,100%);max-width:50vw}
+  .header-brand-logo{height:44px}
+  .header-actions{gap:8px}
+  .theme-toggle{padding:6px 8px}
+  .theme-toggle span{display:none}
+  .auth-theme-toggle span{display:inline}
+  .auth-brand-logo{width:min(400px,92vw);margin-bottom:20px}
+}
+@media(prefers-reduced-motion:reduce){body{transition:none}}
+
+
+/* Dark-mode contrast fixes (WCAG AA, 4.5:1 for normal text). The dark accent is light blue,
+   so primary buttons get a deeper blue behind their white text; reds and simulator labels are lightened for dark surfaces. */
+:where(:root[data-theme="dark"]) button,:where(:root[data-theme="dark"]) .button-link{background:#2c6a88;border-color:#2c6a88;color:#fff}
+:root[data-theme="dark"] .auth-panel .text-button{color:var(--accent)}
+:root[data-theme="dark"] .sla-breach{color:#ff9b9b}
+:root[data-theme="dark"] .history .transition{color:#a9b8ca}
+:root[data-theme="dark"] .history .desc{color:#b2bfd0}
+:root[data-theme="dark"] .impact-node em{color:#f1c38f}
+:root[data-theme="dark"] .impact-node.failed em{color:#ff9b9b}
+:root[data-theme="dark"] .demo-accounts li span{color:#b2bfd0}
