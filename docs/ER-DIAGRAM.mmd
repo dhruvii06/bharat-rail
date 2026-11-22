@@ -1,0 +1,123 @@
+erDiagram
+  %% Based on java/persistence/src/main/resources/schema.sql + integration.sql.
+  %% The category code and technician team are currently business-level references,
+  %% NOT database foreign keys; do not draw enforced FK constraints for them.
+
+  USERS {
+    int user_id PK
+    varchar full_name
+    varchar email UK
+    varchar password_hash
+    varchar role
+    varchar department
+    boolean active
+    boolean must_change_password
+  }
+  TECHNICIAN_DETAILS {
+    int technician_id PK, FK
+    varchar skill_category
+    int current_workload
+    int experience_years
+    boolean is_available
+  }
+  IT_SERVICES {
+    int service_id PK
+    varchar service_name
+    varchar category
+    varchar business_criticality
+    boolean tatkal_path
+  }
+  CATEGORIES {
+    varchar code PK
+    varchar label
+    boolean active
+    varchar skill
+  }
+  SLA_POLICIES {
+    int sla_id PK
+    varchar priority UK
+    int response_target_mins
+    int resolution_target_mins
+  }
+  INCIDENTS {
+    varchar incident_id PK
+    int reporter_id FK
+    int service_id FK
+    int assigned_technician_id FK
+    int sla_id FK
+    varchar category
+    varchar title
+    text description
+    varchar impact
+    varchar urgency
+    varchar priority
+    varchar status
+    boolean tatkal_window
+    timestamp created_at
+    timestamp acknowledged_at
+    timestamp sla_response_deadline
+    timestamp sla_resolution_deadline
+    boolean sla_violated
+    int affected_users
+    text info_request
+    timestamp info_requested_at
+    int handover_to FK
+    text handover_reason
+    timestamp handover_requested_at
+  }
+  AUDIT_LOGS {
+    int log_id PK
+    varchar incident_id FK
+    int performed_by FK
+    varchar action
+    varchar previous_state
+    varchar new_state
+    text description
+    timestamp created_at
+  }
+  RESOLUTIONS {
+    int resolution_id PK
+    varchar incident_id FK, UK
+    int technician_id FK
+    text root_cause
+    text resolution_summary
+    timestamp resolved_at
+    int user_feedback
+  }
+  NOTIFICATIONS {
+    int notification_id PK
+    int user_id FK
+    varchar incident_id FK
+    varchar channel
+    varchar event_type
+    text message
+    timestamp created_at
+    timestamp read_at
+  }
+  INCIDENT_CONTRIBUTORS {
+    int contribution_id PK
+    varchar incident_id FK
+    int technician_id FK
+    varchar passed_on
+    text note
+    timestamp created_at
+  }
+  SETTINGS {
+    varchar setting_key PK
+    varchar setting_value
+  }
+
+  USERS ||--o| TECHNICIAN_DETAILS : "technician profile"
+  USERS o|--o{ INCIDENTS : "reports"
+  USERS o|--o{ INCIDENTS : "assigned technician"
+  USERS o|--o{ INCIDENTS : "pending handover recipient"
+  IT_SERVICES o|--o{ INCIDENTS : "affected service"
+  SLA_POLICIES o|--o{ INCIDENTS : "applied SLA"
+  INCIDENTS o|--o{ AUDIT_LOGS : "history"
+  USERS o|--o{ AUDIT_LOGS : "performed by"
+  INCIDENTS ||--o| RESOLUTIONS : "resolution"
+  USERS o|--o{ RESOLUTIONS : "resolved by"
+  USERS ||--o{ NOTIFICATIONS : "receives"
+  INCIDENTS o|--o{ NOTIFICATIONS : "related to"
+  INCIDENTS ||--o{ INCIDENT_CONTRIBUTORS : "prior technicians"
+  USERS ||--o{ INCIDENT_CONTRIBUTORS : "contributed"
