@@ -125,5 +125,9 @@ check('technician chart credits the resolver with a completed incident', progres
 check('technician chart shows nothing left ongoing from this run', ['Demo Tech Payment', 'Application Support', 'Demo Tech Database', 'Network Support']
   .every(n => progressOf(overviewAfter, n).ongoing === progressOf(overviewBefore, n).ongoing));
 check('only the IT manager can read the report', (await j('GET', '/reports/overview', appTech)).status === 403);
+const mine = (await j('GET', '/technicians/me', dbTech)).body;
+check('a technician can see their own workload and capacity', mine.name === 'Demo Tech Database' && mine.capacity === 5 && mine.workload === progressOf(overviewAfter, 'Demo Tech Database').ongoing,
+  `${mine.workload}/${mine.capacity}`);
+check('only technicians have their own workload view', (await j('GET', '/technicians/me', emp)).status === 403 && (await j('GET', '/technicians/me', mgr)).status === 403);
 
 finish('handover');

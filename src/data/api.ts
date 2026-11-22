@@ -111,6 +111,7 @@ export const api = {
   categories: () => request<Category[]>('GET', '/categories'),
   strategies: () => request<string[]>('GET', '/assignment-strategies'),
   technicians: () => request<Technician[]>('GET', '/technicians'),
+  myWorkload: () => request<Technician>('GET', '/technicians/me'),
 
   notifications: () => request<{ items: Notification[]; unread: number }>('GET', '/notifications'),
   readNotification: (id: number) => request<void>('POST', `/notifications/${id}/read`),
