@@ -4,8 +4,8 @@ Both themes use the **same logo**: the light-mode logo supplied by the team. The
 
 | Background | Asset |
 |---|---|
-| Light (sign-in page in light mode, top bar in dark mode) | `public/brand/bharat-rail-light.webp` |
-| Dark (sign-in page in dark mode, top bar in light mode) | `public/brand/bharat-rail-dark.webp` |
+| Light (sign-in page in light mode) | `public/brand/bharat-rail-light.webp` |
+| Dark (sign-in page in dark mode, and the maroon top bar in both modes) | `public/brand/bharat-rail-dark.webp` |
 
 To regenerate the dark copy after the logo changes (needs Python with Pillow):
 
@@ -18,7 +18,7 @@ python scripts/recolor-logo.py <original-light-logo> public/brand/bharat-rail-li
 - Theme toggle in the header for all signed-in roles and on the login/registration page.
 - Default to the browser's operating-system preference when no prior choice is saved.
 - A deliberate choice overrides OS preference and persists under localStorage key `bharat-rail.theme`.
-- The top bar always contrasts with the page: navy in light mode and light grey-blue in dark mode, so the bar uses the logo for the opposite background (`BrandLogo surface="header"`).
+- The top bar is a railway maroon (`#7b2232`) in both modes, distinct from both the light and the dark page. It always shows the light-text logo (`BrandLogo surface="header"`).
 - The logo changes instantly on toggle on the login page and inside the application.
 - Shared `src/theme.tsx` state updates `document.documentElement.dataset.theme`. CSS overrides live in `src/theme.css` to avoid rewriting the existing team stylesheet.
 - The theme changes dashboard cards, forms, tables, navigation, notification menus, administrator pages, severity labels, and the impact simulator.

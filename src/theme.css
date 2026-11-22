@@ -7,11 +7,11 @@
   --br-muted: #647182;
   --br-soft-border: #e5e9ee;
   --br-input-border: #bfc8d3;
-  --br-header: #18304b;
-  --br-header-text: #f1f5fb;
-  --br-header-muted: #c1d0df;
-  --br-header-border: #4a6582;
-  --br-header-hover: #24405f;
+  --br-header: #7b2232;
+  --br-header-text: #ffffff;
+  --br-header-muted: #f4d6db;
+  --br-header-border: #b06572;
+  --br-header-hover: #922c3e;
 }
 :root[data-theme="dark"] {
   --line: #31445a;
@@ -23,11 +23,6 @@
   --br-muted: #b2bfd0;
   --br-soft-border: #304257;
   --br-input-border: #52657b;
-  --br-header: #e9eef5;
-  --br-header-text: #18304b;
-  --br-header-muted: #3f556d;
-  --br-header-border: #b3c0cf;
-  --br-header-hover: #d5dde8;
   background: #0e1a2a;
   color-scheme: dark;
 }
@@ -43,7 +38,7 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;background:transparent;color:var(--br-header-text);border:1px solid var(--line);font-size:12px;font-weight:500;min-height:34px;border-radius:6px;padding:6px 10px;cursor:pointer}
 .theme-toggle:hover{background:var(--br-surface-muted);color:var(--br-text)}
 .theme-toggle svg{flex:none}
-/* Everything in the top bar takes its colours from the --br-header-* tokens, so it contrasts with the page in both themes.
+/* Everything in the top bar takes its colours from the --br-header-* tokens, a railway maroon that stands out against both the light and the dark page.
    The :root[data-theme] prefix outranks the general dark-mode rules for small text, links and buttons. */
 :root[data-theme] header .header-button,:root[data-theme] header .theme-toggle{background:transparent;color:var(--br-header-text);border-color:var(--br-header-border)}
 :root[data-theme] header .header-button:hover,:root[data-theme] header .theme-toggle:hover{background:var(--br-header-hover);color:var(--br-header-text)}
