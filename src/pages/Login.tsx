@@ -51,7 +51,7 @@ export function Login() {
     <div className="auth-panel">
       <div className="eyebrow">IT SERVICE MANAGEMENT</div>
       <h1>{register ? 'Create a customer account' : 'Sign in'}</h1>
-      <p className="muted">{register ? 'For customers who want to report a problem with Bharat Rail’s online services. Staff accounts are created by the IT manager.' : 'Customers and Bharat Rail staff sign in here.'}</p>
+      {register && <p className="muted">Staff accounts are created by the IT manager.</p>}
       <form onSubmit={submit}>
         {error && <p role="alert" className="error">{error}</p>}
         {notice && <p role="status" className="notice-box">{notice}</p>}
