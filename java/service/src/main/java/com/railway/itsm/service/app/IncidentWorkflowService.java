@@ -328,6 +328,7 @@ public class IncidentWorkflowService {
                     incident.acknowledge(s.technician(actor.userId(), 0), now);
                     incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.ACKNOWLEDGED, actor.userId());
                     queries.setAcknowledgedAt(id, now);
+                    recordTransitionSlaViolation(dto, incident, now, "ACKNOWLEDGED");
                     publish(id, "ACKNOWLEDGED", id + " acknowledged by " + s.userName(actor.userId()));
                 }
                 case "START" -> {
@@ -342,6 +343,7 @@ public class IncidentWorkflowService {
                     String cause = text(rootCause, "root cause", 3, 2000);
                     incident.resolve(s.technician(actor.userId(), 0), fix, cause, now);
                     resolutions.resolveIncident(new Resolution(id, actor.userId(), cause, fix));
+                    recordTransitionSlaViolation(dto, incident, now, "RESOLVED");
                     publish(id, "RESOLVED", id + " resolved: " + fix);
                 }
                 case "VERIFY" -> {
@@ -729,6 +731,28 @@ public class IncidentWorkflowService {
             audit.save(new AuditLog(id, actor.userId(), "FEEDBACK", dto.getStatus().name(), dto.getStatus().name(), "Reporter rated the resolution " + stars + "/5"));
             return detail(actor, id);
         });
+    }
+
+    /**
+     * Persist a deadline missed exactly at a workflow transition. The background monitor only
+     * considers unfinished incidents; without this check, a late acknowledgement or resolution
+     * can finish between monitor ticks and permanently escape the SLA audit.
+     *
+     * Uses the incident's original SLA policy and recorded action timestamp, not the current
+     * global policy. The shared SLA-violated flag prevents duplicate breach events.
+     * Called inside the same transaction that updates the status/resolution.
+     */
+    private void recordTransitionSlaViolation(com.irctc.itsm.model.Incident dto,
+                                              Incident incident, Instant actionTime, String newState) {
+        if (dto.isSlaViolated()) return;
+        SLAResult result = SLAEvaluator.evaluate(incident, actionTime);
+        if (!result.responseViolated() && !result.resolutionViolated()) return;
+        String kind = result.responseViolated() ? "response" : "resolution";
+        String id = dto.getIncidentId();
+        queries.setSlaViolated(id);
+        audit.save(new AuditLog(id, null, "SLA_VIOLATED", newState, newState,
+                "Missed the " + kind + " target; recorded at " + newState.toLowerCase(Locale.ROOT)));
+        publish(id, "SLA_VIOLATED", id + " missed its " + kind + " target (" + dto.getPriority() + ")");
     }
 
     /**
