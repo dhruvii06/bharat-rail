@@ -54,7 +54,6 @@ function CustomerReport() {
       </fieldset>
       <label className="checkbox"><input id="money" type="checkbox" checked={input.moneyTaken} onChange={e => set('moneyTaken', e.target.checked)} />Money was taken from me but I did not get the ticket or service</label>
       <label className="checkbox"><input id="ongoing" type="checkbox" checked={input.stillHappening} onChange={e => set('stillHappening', e.target.checked)} />It is still happening</label>
-      <p className="muted">Our IT team decides how urgent this is from your answers. You will be notified as it progresses, and a technician may ask you for more details.</p>
       <button disabled={busy}>{busy ? 'Sending…' : 'Report problem'}</button>
     </form>
   </>;
