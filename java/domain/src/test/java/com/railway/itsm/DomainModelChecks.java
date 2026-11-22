@@ -179,6 +179,48 @@ public final class DomainModelChecks {
         escalate.assign(fixer,ADMIN,START);escalate.acknowledge(fixer,START);escalate.startInvestigation(fixer,START);
         escalate.resolve(fixer,"Restarted the payment callback service","Stuck worker",START.plusSeconds(120));
         throwsException(InvalidTransitionException.class,()->escalate.changePriority(Priority.P2_HIGH,SLAPolicy.forPriority(Priority.P2_HIGH),ADMIN,"late",START.plusSeconds(130)),"priority cannot change after resolution");
+        // ---- technicians sharing work ----
+        Technician asha=new Technician("Asha","asha@example.test",Set.of(Skill.PAYMENTS),3);
+        Technician ravi=new Technician("Ravi","ravi@example.test",Set.of(Skill.PAYMENTS),3);
+        Technician dbTech=new Technician("Meena","meena@example.test",Set.of(Skill.DATABASE),3);
+        Technician full=new Technician("Full","full@example.test",Set.of(Skill.PAYMENTS),1);
+        full.takeIncident();
+        Incident shared=incident(Impact.HIGH,Urgency.MEDIUM,false,false);
+        shared.classify(Priority.P2_HIGH,ADMIN,START);shared.assign(asha,ADMIN,START.plusSeconds(10));
+        throwsException(UnauthorizedIncidentOperationException.class,()->shared.requestHandover(ravi,dbTech,"Busy",START.plusSeconds(20)),
+            "only the assigned technician can hand an incident over");
+        throwsException(IllegalArgumentException.class,()->shared.requestHandover(asha,ravi," ",START.plusSeconds(20)),"a hand-over needs a reason");
+        throwsException(TechnicianUnavailableException.class,()->shared.requestHandover(asha,full,"On leave tomorrow",START.plusSeconds(20)),
+            "a colleague at capacity cannot be asked");
+        shared.requestHandover(asha,ravi,"On leave from tomorrow",START.plusSeconds(20));
+        check(shared.getPendingHandover()!=null && shared.getAssignedTechnician()==asha,"a hand-over request changes nothing until it is accepted");
+        throwsException(InvalidTransitionException.class,()->shared.requestHandover(asha,dbTech,"Second try",START.plusSeconds(21)),
+            "only one hand-over can wait at a time");
+        throwsException(UnauthorizedIncidentOperationException.class,()->shared.acceptHandover(dbTech,START.plusSeconds(25)),
+            "only the colleague who was asked can accept");
+        shared.declineHandover(ravi,"Already on two P1s",START.plusSeconds(30));
+        check(shared.getPendingHandover()==null && shared.getAssignedTechnician()==asha,"a declined hand-over leaves the incident with the requester");
+        shared.requestHandover(asha,ravi,"On leave from tomorrow",START.plusSeconds(40));
+        shared.acceptHandover(ravi,START.plusSeconds(50));
+        check(shared.getAssignedTechnician()==ravi && shared.getStatus()==IncidentStatus.ASSIGNED && asha.getActiveIncidents()==0 && ravi.getActiveIncidents()==1
+            && shared.getContributors().equals(List.of(asha)),"accepting moves the incident and the workload; the new technician must acknowledge");
+        shared.acknowledge(ravi,START.plusSeconds(60));
+        Instant firstResponse=shared.getAcknowledgedAt();
+        throwsException(IllegalArgumentException.class,()->shared.handOff(ravi,dbTech," ",START.plusSeconds(70)),"a hand-off must say what was done");
+        shared.startInvestigation(ravi,START.plusSeconds(70));
+        shared.handOff(ravi,dbTech,"Payment callback replayed; ledger mismatch remains in the database",START.plusSeconds(80));
+        check(shared.getAssignedTechnician()==dbTech && shared.getStatus()==IncidentStatus.ASSIGNED && shared.getContributors().equals(List.of(asha,ravi))
+            && dbTech.getActiveIncidents()==1 && ravi.getActiveIncidents()==0,"hand-off passes the rest to another team and records who worked on it");
+        shared.acknowledge(dbTech,START.plusSeconds(90));
+        check(shared.getAcknowledgedAt().equals(firstResponse),"re-acknowledging after a hand-off keeps the first response time for the SLA");
+        Incident early=incident(Impact.HIGH,Urgency.MEDIUM,false,false);
+        early.classify(Priority.P2_HIGH,ADMIN,START);early.assign(new Technician("New","new@example.test",Set.of(Skill.PAYMENTS),3),ADMIN,START);
+        throwsException(InvalidTransitionException.class,()->early.handOff(early.getAssignedTechnician(),dbTech,"Nothing yet",START.plusSeconds(5)),
+            "no hand-off before the technician has acknowledged and started");
+        Technician leaving=early.getAssignedTechnician();
+        early.handBack(leaving,"Wrong team for this one",START.plusSeconds(6));
+        check(early.getStatus()==IncidentStatus.CLASSIFIED && early.getAssignedTechnician()==null && leaving.getActiveIncidents()==0,
+            "handing back returns the incident to the IT manager to assign again");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

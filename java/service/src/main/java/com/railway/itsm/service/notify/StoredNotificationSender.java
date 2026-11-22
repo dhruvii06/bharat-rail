@@ -35,7 +35,8 @@ public abstract class StoredNotificationSender implements NotificationSender {
             if (incidentId.isEmpty()) return;
             Snapshot s = snapshots.get();
             s.incident(incidentId.get()).ifPresent(dto -> {
-                for (long userId : policy.recipients(event.type(), channel(), dto.getReporterId(), dto.getAssignedTechnicianId(), s.managerIds())) {
+                for (long userId : policy.recipients(event.type(), channel(), dto.getReporterId(), dto.getAssignedTechnicianId(), s.managerIds(),
+                        s.handoverTarget(incidentId.get()), s.previousAssignee(incidentId.get()))) {
                     String email = s.user(userId).map(com.irctc.itsm.model.User::getEmail).orElse(null);
                     deliver(userId, email, incidentId.get(), event);
                 }

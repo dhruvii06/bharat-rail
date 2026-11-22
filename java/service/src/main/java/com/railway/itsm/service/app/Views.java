@@ -14,7 +14,19 @@ public final class Views {
                                Instant createdAt, Instant acknowledgedAt, Instant responseDueAt, Instant resolutionDueAt,
                                Instant resolvedAt, String sla, String informationRequest, Instant informationRequestedAt,
                                ResolutionView resolution, List<HistoryView> history, List<String> allowedActions,
-                               List<SimilarView> similar) {}
+                               List<SimilarView> similar, HandoverView handover, List<ContributorView> contributors) {}
+
+    /** An open hand-over request (staff only). */
+    public record HandoverView(Long fromId, String fromName, Long toId, String toName, String reason, Instant requestedAt) {}
+
+    /** A technician who worked on the incident before the current assignee (staff only). */
+    public record ContributorView(long id, String name, String passedOn, String note, Instant at) {}
+
+    /** Answer to a declined hand-over: the decliner can no longer open the incident, so no incident is returned. */
+    public record HandoverDeclinedView(String id, String message) {}
+
+    /** A colleague a technician can hand an incident to. {@code team} is the stored skill code. */
+    public record ColleagueView(long id, String name, String team, int workload, int capacity, boolean available) {}
 
     public record ResolutionView(String summary, String rootCause, Instant resolvedAt, Long technicianId,
                                  String technicianName, Integer feedback) {}

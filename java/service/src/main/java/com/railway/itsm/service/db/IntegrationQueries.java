@@ -20,7 +20,11 @@ import java.util.Map;
  */
 public class IntegrationQueries {
 
-    public record Extras(Instant acknowledgedAt, int affectedUsers, String infoRequest, Instant infoRequestedAt) {}
+    public record Extras(Instant acknowledgedAt, int affectedUsers, String infoRequest, Instant infoRequestedAt,
+                         Long handoverTo, String handoverReason, Instant handoverRequestedAt) {}
+
+    /** A technician who worked on an incident before the current assignee. */
+    public record ContributorRow(long technicianId, String passedOn, String note, Instant at) {}
 
     /** {@code skill} is the technician team that handles the category, stored like technician skills. */
     public record CategoryRow(String code, String label, boolean active, String skill) {}
@@ -38,9 +42,10 @@ public class IntegrationQueries {
     }
 
     public Map<String, Extras> extras() {
-        return query("SELECT incident_id, acknowledged_at, affected_users, info_request, info_requested_at FROM incidents", ps -> {}, rs -> {
+        return query("SELECT incident_id, acknowledged_at, affected_users, info_request, info_requested_at, handover_to, handover_reason, handover_requested_at FROM incidents", ps -> {}, rs -> {
             Map<String, Extras> map = new HashMap<>();
-            while (rs.next()) map.put(rs.getString(1), new Extras(instant(rs.getTimestamp(2)), rs.getInt(3), rs.getString(4), instant(rs.getTimestamp(5))));
+            while (rs.next()) map.put(rs.getString(1), new Extras(instant(rs.getTimestamp(2)), rs.getInt(3), rs.getString(4), instant(rs.getTimestamp(5)),
+                    rs.getObject(6) == null ? null : rs.getLong(6), rs.getString(7), instant(rs.getTimestamp(8))));
             return map;
         });
     }
@@ -57,8 +62,9 @@ public class IntegrationQueries {
         update("UPDATE incidents SET affected_users = ? WHERE incident_id = ?", ps -> { ps.setInt(1, affectedUsers); ps.setString(2, incidentId); });
     }
 
+    /** Keeps the first acknowledgement: after a hand-over the new technician acknowledges again, but the SLA response was already made. */
     public void setAcknowledgedAt(String incidentId, Instant at) {
-        update("UPDATE incidents SET acknowledged_at = ? WHERE incident_id = ?", ps -> { ps.setTimestamp(1, Timestamp.valueOf(Mapping.local(at))); ps.setString(2, incidentId); });
+        update("UPDATE incidents SET acknowledged_at = COALESCE(acknowledged_at, ?) WHERE incident_id = ?", ps -> { ps.setTimestamp(1, Timestamp.valueOf(Mapping.local(at))); ps.setString(2, incidentId); });
     }
 
     public void setInfoRequest(String incidentId, String question, Instant at) {
@@ -206,6 +212,45 @@ public class IntegrationQueries {
             while (rs.next()) list.add(new AuditRow(rs.getLong(1), rs.getString(2), instant(rs.getTimestamp(3)),
                     rs.getObject(4) == null ? null : rs.getLong(4), rs.getString(5), rs.getString(6), rs.getString(7), rs.getString(8), rs.getString(9)));
             return list;
+        });
+    }
+
+    // ---- technicians sharing work ----
+
+    public void requestHandover(String incidentId, long to, String reason, Instant at) {
+        update("UPDATE incidents SET handover_to = ?, handover_reason = ?, handover_requested_at = ? WHERE incident_id = ?", ps -> {
+            ps.setLong(1, to); ps.setString(2, reason); ps.setTimestamp(3, Timestamp.valueOf(Mapping.local(at))); ps.setString(4, incidentId);
+        });
+    }
+
+    public void clearHandover(String incidentId) {
+        update("UPDATE incidents SET handover_to = NULL, handover_reason = NULL, handover_requested_at = NULL WHERE incident_id = ?", ps -> ps.setString(1, incidentId));
+    }
+
+    /**
+     * Moves an incident from one technician to another (or back to the IT manager when {@code to} is null)
+     * and moves the workload with it. Runs inside the command's transaction.
+     */
+    public void transferAssignment(String incidentId, long from, Long to, String status) {
+        update("UPDATE incidents SET assigned_technician_id = ?, status = ?, handover_to = NULL, handover_reason = NULL, handover_requested_at = NULL WHERE incident_id = ?", ps -> {
+            ps.setObject(1, to, java.sql.Types.BIGINT); ps.setString(2, status); ps.setString(3, incidentId);
+        });
+        update("UPDATE technician_details SET current_workload = GREATEST(current_workload - 1, 0) WHERE technician_id = ?", ps -> ps.setLong(1, from));
+        if (to != null) update("UPDATE technician_details SET current_workload = current_workload + 1 WHERE technician_id = ?", ps -> ps.setLong(1, to));
+    }
+
+    public void addContributor(String incidentId, long technicianId, String passedOn, String note) {
+        update("INSERT INTO incident_contributors (incident_id, technician_id, passed_on, note) VALUES (?, ?, ?, ?)", ps -> {
+            ps.setString(1, incidentId); ps.setLong(2, technicianId); ps.setString(3, passedOn); ps.setString(4, note);
+        });
+    }
+
+    public Map<String, List<ContributorRow>> contributors() {
+        return query("SELECT incident_id, technician_id, passed_on, note, created_at FROM incident_contributors ORDER BY created_at, contribution_id", ps -> {}, rs -> {
+            Map<String, List<ContributorRow>> map = new HashMap<>();
+            while (rs.next()) map.computeIfAbsent(rs.getString(1), k -> new ArrayList<>())
+                    .add(new ContributorRow(rs.getLong(2), rs.getString(3), rs.getString(4), instant(rs.getTimestamp(5))));
+            return map;
         });
     }
 

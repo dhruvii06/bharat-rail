@@ -53,22 +53,21 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS info_request TEXT;
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS info_requested_at TIMESTAMP;
 
--- Categories the IT manager can rename or switch off. Codes match the domain's IncidentCategory
--- (which maps each category to the technician skill that handles it).
+-- Categories the IT manager can add, rename or switch off. Each is handled by one technician team
+-- (skill); the eight standard categories are handled by the team of the same name.
 CREATE TABLE IF NOT EXISTS categories (
     code VARCHAR(30) PRIMARY KEY,
     label VARCHAR(60) NOT NULL,
     active BOOLEAN NOT NULL DEFAULT TRUE
 );
-INSERT INTO categories (code, label) VALUES
-('APPLICATION', 'Application'), ('PAYMENT', 'Payment'), ('DATABASE', 'Database'), ('NETWORK', 'Network'),
-('SECURITY', 'Security'), ('AUTHENTICATION', 'Authentication'), ('API_INTEGRATION', 'API integration'),
-('INFRASTRUCTURE', 'Infrastructure')
-ON CONFLICT (code) DO NOTHING;
-
--- Each category is handled by one technician team (skill). New categories added by the IT manager
--- choose their team; the eight standard categories are handled by the team of the same name.
+-- The skill column is added before the standard rows are inserted, so re-running this file on a
+-- database that already has the (NOT NULL) column still works.
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS skill VARCHAR(30);
+INSERT INTO categories (code, label, skill) VALUES
+('APPLICATION', 'Application', 'APPLICATION'), ('PAYMENT', 'Payment', 'PAYMENT'), ('DATABASE', 'Database', 'DATABASE'),
+('NETWORK', 'Network', 'NETWORK'), ('SECURITY', 'Security', 'SECURITY'), ('AUTHENTICATION', 'Authentication', 'AUTHENTICATION'),
+('API_INTEGRATION', 'API integration', 'API_INTEGRATION'), ('INFRASTRUCTURE', 'Infrastructure', 'INFRASTRUCTURE')
+ON CONFLICT (code) DO NOTHING;
 UPDATE categories SET skill = code WHERE skill IS NULL;
 ALTER TABLE categories ALTER COLUMN skill SET NOT NULL;
 
@@ -101,3 +100,21 @@ WHERE email = 'passenger@demo.local' AND NOT EXISTS (SELECT 1 FROM users WHERE e
 INSERT INTO users (full_name, email, password_hash, role, department) VALUES
 ('Demo Customer', 'customer@demo.local', 'unset', 'CUSTOMER', 'Customer')
 ON CONFLICT (email) DO NOTHING;
+
+-- ---- Technicians sharing work ----
+
+-- An open hand-over: the assigned technician asked a colleague to take the incident over.
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS handover_to INT REFERENCES users(user_id);
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS handover_reason TEXT;
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS handover_requested_at TIMESTAMP;
+
+-- Technicians who worked on an incident before the current assignee, and how they passed it on.
+CREATE TABLE IF NOT EXISTS incident_contributors (
+    contribution_id SERIAL PRIMARY KEY,
+    incident_id VARCHAR(25) NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,
+    technician_id INT NOT NULL REFERENCES users(user_id),
+    passed_on VARCHAR(20) NOT NULL CHECK (passed_on IN ('HANDED_OVER', 'HANDED_OFF', 'HANDED_BACK')),
+    note TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_contributors_incident ON incident_contributors(incident_id, created_at);

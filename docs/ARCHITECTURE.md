@@ -95,6 +95,14 @@ These steps can happen while the incident is open:
 - the reporter can correct the title and description until a technician acknowledges the incident;
 - the IT manager can edit any open incident, including its category.
 
+Technicians can share work while the incident is open (`Incident.requestHandover`, `acceptHandover`, `handOff`, `handBack`):
+
+- **Hand over:** the assigned technician asks a named colleague to take the incident ("I can't do this one"). Nothing moves until the colleague accepts; they can decline, and the requester can withdraw. Only one request can be open at a time.
+- **Hand off:** for incidents that need two teams. After acknowledging, the technician records what they finished and passes the rest to another team; the available member with the fewest active incidents gets it.
+- **Hand back:** the incident returns to the IT manager to be reassigned.
+
+In every case the workload moves with the incident, the new technician acknowledges it, the SLA deadlines and the first acknowledgement time are kept, and earlier technicians are recorded as contributors. Customers see only "Another specialist from our IT team is now handling your request".
+
 ## Assignment
 
 The IT manager can assign an incident in three ways:

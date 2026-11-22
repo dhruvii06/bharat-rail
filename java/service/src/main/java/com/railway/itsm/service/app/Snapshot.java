@@ -45,6 +45,7 @@ public final class Snapshot {
     private final Set<Long> inactive;
     private final Map<String, IncidentCategory> categories = new LinkedHashMap<>();
     private final Set<Long> tatkalServices;
+    private final Map<String, List<IntegrationQueries.ContributorRow>> contributors;
 
     Snapshot(UserRepository userRepo, ServiceAndSlaRepository serviceRepo, IncidentRepository incidentRepo, IntegrationQueries queries) {
         for (Role role : Role.values()) for (com.irctc.itsm.model.User u : userRepo.findByRole(role)) users.put(u.getUserId(), u);
@@ -57,6 +58,23 @@ public final class Snapshot {
         this.inactive = queries.inactiveUserIds();
         for (IntegrationQueries.CategoryRow c : queries.categories()) categories.put(c.code(), Mapping.category(c.code(), c.label(), c.skill()));
         this.tatkalServices = queries.tatkalServiceIds();
+        this.contributors = queries.contributors();
+    }
+
+    /** The colleague an open hand-over is waiting for, or null. */
+    public Long handoverTarget(String incidentId) { return Optional.ofNullable(extras.get(incidentId)).map(IntegrationQueries.Extras::handoverTo).orElse(null); }
+
+    public String handoverReason(String incidentId) { return Optional.ofNullable(extras.get(incidentId)).map(IntegrationQueries.Extras::handoverReason).orElse(null); }
+
+    public Instant handoverRequestedAt(String incidentId) { return Optional.ofNullable(extras.get(incidentId)).map(IntegrationQueries.Extras::handoverRequestedAt).orElse(null); }
+
+    /** Technicians who worked on the incident before the current assignee, oldest first. */
+    public List<IntegrationQueries.ContributorRow> contributors(String incidentId) { return contributors.getOrDefault(incidentId, List.of()); }
+
+    /** The technician who most recently passed the incident on (for "your hand-over was accepted"). */
+    public Long previousAssignee(String incidentId) {
+        List<IntegrationQueries.ContributorRow> list = contributors(incidentId);
+        return list.isEmpty() ? null : list.get(list.size() - 1).technicianId();
     }
 
     /** A category by code, including ones the IT manager added or switched off. */
@@ -141,12 +159,20 @@ public final class Snapshot {
         Technician assignee = dto.getAssignedTechnicianId() == null ? null : technician(dto.getAssignedTechnicianId(), active ? 1 : 0);
         IncidentCategory category = category(dto.getCategory());
         Priority priority = dto.getPriority() == null ? null : Mapping.priority(dto.getPriority());
-        return Incident.restore(Ids.incident(dto.getIncidentId()), dto.getTitle(), dto.getDescription(),
+        Incident incident = Incident.restore(Ids.incident(dto.getIncidentId()), dto.getTitle(), dto.getDescription(),
                 reporter(dto.getReporterId()), service(dto.getServiceId()), category,
                 Mapping.impact(dto.getImpact()), Mapping.urgency(dto.getUrgency()), affectedUsers(dto.getIncidentId()),
                 category.isSecurity(), dto.isTatkalWindow(), Mapping.instant(dto.getCreatedAt()),
                 status, priority, assignee, acknowledgedAt(dto.getIncidentId()), resolvedAt(dto.getIncidentId()), null,
                 storedSlaPolicy(dto, priority), infoRequest(dto.getIncidentId()), infoRequestedAt(dto.getIncidentId()));
+        String id = dto.getIncidentId();
+        Long target = handoverTarget(id);
+        Incident.TransferRequest pending = target == null || assignee == null || !technicianDetails.containsKey(target) ? null
+                : new Incident.TransferRequest(assignee, technician(target, 0), handoverReason(id), handoverRequestedAt(id));
+        List<Technician> earlier = contributors(id).stream().filter(c -> technicianDetails.containsKey(c.technicianId()))
+                .map(c -> technician(c.technicianId(), 0)).toList();
+        incident.restoreCollaboration(pending, earlier);
+        return incident;
     }
 
     /** The SLA targets this incident was created with, taken from its stored deadlines (null if unknown). */

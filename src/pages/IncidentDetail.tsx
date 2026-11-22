@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { reporterRoles, type Action, type Incident, type SimilarIncident, type User } from '../../shared/domain';
+import { reporterRoles, teams, type Action, type Colleague, type Incident, type SimilarIncident, type User } from '../../shared/domain';
 import { useLoad } from '../auth';
 import { ErrorNote, PriorityBadge, SlaTag, StatusTag, formatDate, humanize } from '../components/ui';
 import { api } from '../data/api';
@@ -49,6 +49,24 @@ export function IncidentDetail({ user }: { user: User }) {
       <small>Asked {formatDate(incident.informationRequestedAt)}{user.role === 'Technician' && ' · you can resolve once the reporter answers'}</small>
     </div>}
 
+    {incident.handover && (has('ACCEPT_HANDOVER')
+      ? <div className="notice-box handover-box" role="status">
+          <strong>{incident.handover.fromName} asks you to take over this incident.</strong>
+          <p className="preserve">{incident.handover.reason}</p>
+          <small>Asked {formatDate(incident.handover.requestedAt)} · if you accept, it moves to you and you acknowledge it. The SLA deadlines stay the same.</small>
+          <HandoverAnswer busy={busy} onAccept={() => run(() => api.acceptHandover(incident.id))} onDecline={async reason => {
+            setBusy(true); setActionError('');
+            try { await api.declineHandover(incident.id, reason); navigate('/incidents', { replace: true }); }
+            catch (e) { setActionError((e as Error).message); setBusy(false); }
+          }} />
+        </div>
+      : <div className="notice-box handover-box" role="status">
+          <strong>Waiting for {incident.handover.toName} to accept the hand-over.</strong>
+          <p className="preserve">{incident.handover.reason}</p>
+          <small>Asked {formatDate(incident.handover.requestedAt)}{has('WITHDRAW_HANDOVER') ? ' · you keep the incident until they accept' : ''}</small>
+          {has('WITHDRAW_HANDOVER') && <div className="handover-answer"><button className="secondary" disabled={busy} onClick={() => run(() => api.withdrawHandover(incident.id))}>Withdraw request</button></div>}
+        </div>)}
+
     <div className="detail-grid">
       <section className="facts">
         <h2>Details</h2>
@@ -65,6 +83,8 @@ export function IncidentDetail({ user }: { user: User }) {
           <Fact label="Affected passengers">{incident.affectedUsers.toLocaleString()}</Fact>
           <Fact label="Why this priority">{incident.priorityReason ?? '—'}</Fact>
           <Fact label="Assigned to">{incident.assigneeName ?? 'Awaiting assignment'}</Fact>
+          {incident.contributors.length > 0 && <Fact label="Worked on by">{incident.contributors.map(c =>
+            <span key={`${c.id}-${c.at}`} className="contributor">{c.name} <small>{passedOnLabel[c.passedOn]} {formatDate(c.at)}{c.note ? ` · ${c.note}` : ''}</small></span>)}</Fact>}
           <Fact label="Response due">{formatDate(incident.responseDueAt)}{incident.acknowledgedAt && <small>Acknowledged {formatDate(incident.acknowledgedAt)}</small>}</Fact>
           <Fact label="Resolution due">{formatDate(incident.resolutionDueAt)}{incident.resolvedAt && <small>Resolved {formatDate(incident.resolvedAt)}</small>}</Fact>
         </dl>}
@@ -92,6 +112,8 @@ export function IncidentDetail({ user }: { user: User }) {
           placeholder="e.g. Which UPI app was used, and what is the transaction ID?" busy={busy} onSubmit={q => run(() => api.requestInfo(incident.id, q))} />}
         {has('PROVIDE_INFO') && <TextAction id="answer" label="Your answer" button="Send answer" min={2} max={2000}
           placeholder="Answer the technician's question" busy={busy} onSubmit={a => run(() => api.provideInfo(incident.id, a))} />}
+        {has('HANDOFF') && <HandoffForm busy={busy} onHandoff={(target, done) => run(() => api.handoff(incident.id, target, done))} />}
+        {has('HANDOVER') && <HandoverForm incidentId={incident.id} busy={busy} onHandover={(to, reason) => run(() => api.handover(incident.id, to, reason))} />}
         {has('RESOLVE') && <ResolveForm busy={busy} onResolve={(summary, rootCause) => run(() => api.transition(incident.id, 'RESOLVE', { summary, rootCause }))} />}
         {has('VERIFY') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'VERIFY'))}>Confirm the fix works</button>}
         {has('FEEDBACK') && <FeedbackForm busy={busy} onRate={rating => run(() => api.feedback(incident.id, rating))} />}
@@ -185,6 +207,60 @@ function EditForm({ incident, manager, busy, onSave }: { incident: Incident; man
     </select></label>}
     <button disabled={busy || !changed || title.trim().length < 5 || description.trim().length < 10} onClick={() => onSave(patch)}>Save changes</button>
   </details>;
+}
+
+const passedOnLabel: Record<string, string> = { HANDED_OVER: 'handed over', HANDED_OFF: 'did their part and handed off', HANDED_BACK: 'handed back' };
+
+/** "I can't take this": ask a colleague to take over, or return the incident to the IT manager. */
+function HandoverForm({ incidentId, busy, onHandover }: { incidentId: string; busy: boolean; onHandover: (technicianId: number | null, reason: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [colleagues, setColleagues] = useState<Colleague[] | null>(null);
+  const [error, setError] = useState('');
+  const [to, setTo] = useState('');
+  const [reason, setReason] = useState('');
+  useEffect(() => {
+    if (!open || colleagues) return;
+    api.colleagues(incidentId).then(setColleagues).catch(e => setError((e as Error).message));
+  }, [open, colleagues, incidentId]);
+  const teamLabel = (code: string) => teams.find(t => t.code === code)?.label ?? humanize(code);
+  return <details className="action-form" onToggle={e => setOpen((e.target as HTMLDetailsElement).open)}>
+    <summary>Hand over <small>Ask a colleague to take it, or return it to the IT manager.</small></summary>
+    {error && <p className="error">{error}</p>}
+    <label>Hand over to<select id="handover-to" value={to} onChange={e => setTo(e.target.value)}>
+      <option value="">Choose a colleague…</option>
+      {colleagues?.map(c => <option key={c.id} value={c.id} disabled={!c.available}>
+        {c.name} · {teamLabel(c.team)} · {c.workload}/{c.capacity}{c.available ? '' : ' (unavailable)'}</option>)}
+      <option value="manager">Back to the IT manager to reassign</option>
+    </select></label>
+    <label>Reason<textarea id="handover-reason" className="short" maxLength={500} value={reason} onChange={e => setReason(e.target.value)}
+      placeholder="e.g. On leave from tomorrow; this needs someone who knows the refund system" /></label>
+    <button disabled={busy || !to || reason.trim().length < 5} onClick={() => { onHandover(to === 'manager' ? null : Number(to), reason.trim()); setReason(''); setTo(''); }}>
+      {to === 'manager' ? 'Hand back' : 'Send request'}</button>
+  </details>;
+}
+
+/** Work that needs two teams: record your part and pass the rest to another team. */
+function HandoffForm({ busy, onHandoff }: { busy: boolean; onHandoff: (target: { team: string }, workDone: string) => void }) {
+  const [team, setTeam] = useState('');
+  const [done, setDone] = useState('');
+  return <details className="action-form">
+    <summary>Hand off to another team <small>For incidents that need two teams. The next technician continues; deadlines stay the same.</small></summary>
+    <label>Team<select id="handoff-team" value={team} onChange={e => setTeam(e.target.value)}>
+      <option value="">Choose a team…</option>{teams.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
+    </select></label>
+    <label>What you have done<textarea id="handoff-done" className="short" maxLength={2000} value={done} onChange={e => setDone(e.target.value)}
+      placeholder="e.g. Payment callbacks replayed; the ledger mismatch in the booking database remains" /></label>
+    <button disabled={busy || !team || done.trim().length < 10} onClick={() => { onHandoff({ team }, done.trim()); setDone(''); setTeam(''); }}>Hand off</button>
+  </details>;
+}
+
+function HandoverAnswer({ busy, onAccept, onDecline }: { busy: boolean; onAccept: () => void; onDecline: (reason: string) => void }) {
+  const [reason, setReason] = useState('');
+  return <div className="handover-answer">
+    <button disabled={busy} onClick={onAccept}>Accept and take over</button>
+    <input className="inline-input" aria-label="Reason for declining" placeholder="Reason for declining (optional)" value={reason} onChange={e => setReason(e.target.value)} maxLength={500} />
+    <button className="secondary" disabled={busy} onClick={() => onDecline(reason.trim())}>Decline</button>
+  </div>;
 }
 
 function PriorityForm({ current, busy, onChange }: { current: string | null; busy: boolean; onChange: (priority: string, reason: string) => void }) {

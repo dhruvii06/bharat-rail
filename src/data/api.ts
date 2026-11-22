@@ -1,5 +1,5 @@
 import type {
-  Action, AdminUser, AuditSearchEntry, Category, CreatedIncident, CustomerIncidentInput, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
+  Action, AdminUser, AuditSearchEntry, Category, Colleague, CreatedIncident, CustomerIncidentInput, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
   Overview, Service, Settings, SlaPolicy, Technician, User
 } from '../../shared/domain.ts';
 
@@ -91,6 +91,17 @@ export const api = {
     request<Incident>('PATCH', `/incidents/${encodeURIComponent(id)}`, patch),
   audit: (filters: Record<string, string>) =>
     request<AuditSearchEntry[]>('GET', `/audit?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== ''))}`),
+  colleagues: (id: string) => request<Colleague[]>('GET', `/incidents/${encodeURIComponent(id)}/colleagues`),
+  /** Ask a colleague to take over; with no technicianId the incident goes back to the IT manager. */
+  handover: (id: string, technicianId: number | null, reason: string) =>
+    request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/handover`, { technicianId, reason }),
+  acceptHandover: (id: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/handover/accept`),
+  /** Returns a confirmation, not the incident: after declining you can no longer open it. */
+  declineHandover: (id: string, reason: string) =>
+    request<{ id: string; message: string }>('POST', `/incidents/${encodeURIComponent(id)}/handover/decline`, { reason }),
+  withdrawHandover: (id: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/handover/withdraw`),
+  handoff: (id: string, target: { team?: string; technicianId?: number }, workDone: string) =>
+    request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/handoff`, { ...target, workDone }),
   message: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/messages`, { text }),
   feedback: (id: string, rating: number) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/feedback`, { rating }),
   requestInfo: (id: string, question: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/info-request`, { question }),
