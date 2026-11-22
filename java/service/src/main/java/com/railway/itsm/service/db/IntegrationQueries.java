@@ -215,6 +215,15 @@ public class IntegrationQueries {
         });
     }
 
+    /** Incidents each technician has resolved (from the resolutions table). */
+    public Map<Long, Long> resolvedCountByTechnician() {
+        return query("SELECT technician_id, count(*) FROM resolutions WHERE technician_id IS NOT NULL GROUP BY technician_id", ps -> {}, rs -> {
+            Map<Long, Long> map = new HashMap<>();
+            while (rs.next()) map.put(rs.getLong(1), rs.getLong(2));
+            return map;
+        });
+    }
+
     // ---- technicians sharing work ----
 
     public void requestHandover(String incidentId, long to, String reason, Instant at) {

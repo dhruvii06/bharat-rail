@@ -113,6 +113,10 @@ export interface Overview {
   total: number; open: number; critical: number; resolved: number; slaViolations: number;
   slaCompliancePercent: number | null; averageResolutionMinutes: number | null;
   byService: Count[]; byPriority: Count[]; byStatus: Count[]; workload: Technician[];
+  /** Incidents reported per month, last 12 months, oldest first (month = YYYY-MM). */
+  monthly: { month: string; count: number }[];
+  /** Per technician: incidents resolved, and assigned incidents still open. */
+  technicianProgress: { id: number; name: string; team: string; completed: number; ongoing: number }[];
 }
 
 export interface PriorityFactors {

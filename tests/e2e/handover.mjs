@@ -8,6 +8,9 @@ const notes = async token => (await j('GET', '/notifications', token)).body.item
 const outbox = async () => (await j('GET', '/notifications/outbox', mgr)).body;
 const workload = async name => (await j('GET', '/technicians', mgr)).body.find(t => t.name === name)?.workload;
 
+const overviewBefore = (await j('GET', '/reports/overview', mgr)).body;
+const progressOf = (o, name) => o.technicianProgress.find(t => t.name === name) ?? { completed: 0, ongoing: 0 };
+
 // A customer reports a payment problem; it is assigned to the payment technician, who acknowledges.
 let r = await j('POST', '/incidents', cust, { title: `Refund not received ${runId}`, description: 'Ticket was cancelled a week ago but the refund has not arrived', serviceId: 2, effect: 'DEGRADED', moneyTaken: true, stillHappening: false });
 const id = r.body.incident.id;
@@ -110,5 +113,17 @@ check('the manager assigns it again', r.body.assigneeName === 'Network Support' 
 const netTech = await login('network.tech@demo.local');
 for (const action of ['ACKNOWLEDGE', 'START']) await j('POST', `/incidents/${back}/transitions`, netTech, { action });
 await j('POST', `/incidents/${back}/transitions`, netTech, { action: 'RESOLVE', summary: 'Fixed the CDN route for seat map tiles', rootCause: 'Bad CDN route' });   // keep workloads clean for later runs
+
+// --- the IT manager's charts
+const overviewAfter = (await j('GET', '/reports/overview', mgr)).body;
+const thisMonth = new Date().toISOString().slice(0, 7);
+check('monthly chart: 12 months, oldest first, ending this month', overviewAfter.monthly.length === 12 && overviewAfter.monthly.at(-1).month === thisMonth
+  && overviewAfter.monthly.every((m, i, all) => i === 0 || all[i - 1].month < m.month));
+check('monthly chart counts the two incidents reported in this run', overviewAfter.monthly.at(-1).count === overviewBefore.monthly.at(-1).count + 2,
+  `${overviewBefore.monthly.at(-1).count} -> ${overviewAfter.monthly.at(-1).count}`);
+check('technician chart credits the resolver with a completed incident', progressOf(overviewAfter, 'Demo Tech Database').completed === progressOf(overviewBefore, 'Demo Tech Database').completed + 1);
+check('technician chart shows nothing left ongoing from this run', ['Demo Tech Payment', 'Application Support', 'Demo Tech Database', 'Network Support']
+  .every(n => progressOf(overviewAfter, n).ongoing === progressOf(overviewBefore, n).ongoing));
+check('only the IT manager can read the report', (await j('GET', '/reports/overview', appTech)).status === 403);
 
 finish('handover');
