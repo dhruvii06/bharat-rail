@@ -36,7 +36,7 @@ export function ImpactSimulator() {
       <div>
         <div className="eyebrow">MANAGEMENT / ADVANCED OPERATIONS</div>
         <h1>Incident Impact Simulator</h1>
-        <p className="muted">Explore the potential downstream blast radius of a railway IT service failure.</p>
+        <p className="muted">Assess the potential impact of a service failure.</p>
       </div>
       <span className="impact-demo-pill">TRAINING SIMULATION</span>
     </div>
@@ -100,8 +100,8 @@ export function ImpactSimulator() {
 
     <div className="impact-bottom">
       <section className="impact-card">
-        <h2>Explainable propagation paths</h2>
-        <p className="muted">Shortest modeled path from the failed service to every potentially affected service.</p>
+        <h2>Service dependency paths</h2>
+        <p className="muted">Shortest modeled path from the selected service to each potentially affected service.</p>
         {report.affected.length
           ? <ol className="impact-paths">{report.affected.map(s => <li key={s.id}>
               <strong>{s.label}</strong><small>{s.path.map(labelFor).join(' → ')}</small>

@@ -31,6 +31,30 @@ export function Overview({ user }: { user: User }) {
   const byService: Count[] = manager && report.data ? report.data.byService
     : Object.entries(items.reduce<Record<string, number>>((m, i) => ({ ...m, [i.serviceName]: (m[i.serviceName] ?? 0) + 1 }), {})).map(([label, count]) => ({ label, count }));
 
+  const attention: [string, number][] = manager
+    ? [
+        ['Awaiting assignment', items.filter(i => i.status === 'CLASSIFIED' && !i.assigneeName).length],
+        ['SLA at risk', active.filter(i => i.sla === 'AT_RISK').length],
+        ['SLA breached', active.filter(i => i.sla === 'BREACHED').length]
+      ]
+    : technician
+    ? [
+        ['Awaiting acknowledgement', active.filter(i => i.status === 'ASSIGNED').length],
+        ['Waiting for reporter', active.filter(i => !!i.informationRequest).length],
+        ['SLA at risk', active.filter(i => i.sla === 'AT_RISK').length]
+      ]
+    : user.role === 'Customer'
+    ? [
+        ['Awaiting your response', items.filter(i => !!i.informationRequest).length],
+        ['In progress', items.filter(i => i.status === 'IN_PROGRESS').length],
+        ['Ready for verification', items.filter(i => i.status === 'RESOLVED').length]
+      ]
+    : [
+        ['Awaiting your response', items.filter(i => !!i.informationRequest).length],
+        ['Ready for verification', items.filter(i => i.status === 'RESOLVED').length],
+        ['SLA at risk', active.filter(i => i.sla === 'AT_RISK').length]
+      ];
+
   const title = manager ? 'Operations overview' : user.role === 'Technician' ? 'My work overview' : 'My incident overview';
   return <>
     <div className="page-heading">
@@ -54,9 +78,8 @@ export function Overview({ user }: { user: User }) {
         {byService.map(s => <div className="service-row" key={s.label}><span>{s.label}</span><span>{s.count}</span></div>)}
         {!byService.length && <p>No service incidents to display.</p>}
       </section>
-      <section><h2>Resolution workflow</h2>
-        <ol className="workflow"><li>Report: priority and SLA calculated automatically</li><li>Assign: skill- or load-based strategy</li><li>Acknowledge, investigate, resolve</li><li>Reporter verifies, manager closes</li></ol>
-        <p className="muted">You see the actions your role is allowed to take on each incident.</p>
+      <section><h2>Needs attention</h2>
+        {attention.map(([label, count]) => <div className="service-row" key={label}><span>{label}</span><span>{count}</span></div>)}
       </section>
     </div>
   </>;
