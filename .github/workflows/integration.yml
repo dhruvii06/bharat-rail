@@ -1,7 +1,11 @@
 name: Full-stack integration (PostgreSQL + Java + Node)
 on:
   push:
+    branches: [main]
   pull_request:
+concurrency:
+  group: full-stack-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -61,11 +65,24 @@ jobs:
             tail -n 100 "$RUNNER_TEMP/node-api.log" || true
           }
           trap cleanup EXIT
-          for attempt in $(seq 1 45); do
-            if curl --fail --silent http://127.0.0.1:3001/api/v1/health > /dev/null; then
+          # Node's health endpoint can be ready before the Java service.
+          # Wait for BOTH processes to be healthy before launching the admin E2E suite.
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --max-time 2 http://127.0.0.1:3001/api/v1/health > /dev/null \
+              && curl --fail --silent --max-time 2 http://127.0.0.1:8081/health > /dev/null; then
+              ready=1
               break
+            fi
+            if ! kill -0 "$node_pid" 2>/dev/null || ! kill -0 "$java_pid" 2>/dev/null; then
+              echo "A service stopped before becoming healthy."
+              exit 1
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:3001/api/v1/health
+          if [ "$ready" -ne 1 ]; then
+            echo "Node API or Java incident service did not become healthy in time."
+            exit 1
+          fi
+          echo "Both Node API and Java incident service are healthy."
           npm run test:e2e
