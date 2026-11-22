@@ -61,7 +61,7 @@ The IT manager may manually change priority on open incidents with a recorded re
 | Value objects | `IncidentCategory` (extensible code/team), `Resolution`, `SLAPolicy` and other immutable records. |
 | Algorithms | `ServiceDependencyGraph` uses BFS to find hypothetical downstream service impact. |
 
-See `domain-class-diagram.mmd` for the core class model (reporter inheritance, technician handover, dynamic categories, Strategy, Observer and Repository). The exception hierarchy, SLA evaluation and simulated service-dependency graph are documented separately in `domain-class-diagram-extensions.mmd`. The formal UML use-case source is `../../../../docs/USE-CASE-DIAGRAM.puml`. Render and inspect all diagrams before adding them to the report.
+See `domain-class-diagram.mmd` for the core class model (reporter inheritance, technician handover, dynamic categories, Strategy, Observer and Repository). The exception hierarchy, SLA evaluation and simulated service-dependency graph are documented separately in `domain-class-diagram-extensions.mmd`. The formal UML use-case source is `../../../docs/USE-CASE-DIAGRAM.puml`. Render and inspect all diagrams before adding them to the report.
 
 ## 6. Exception handling
 
