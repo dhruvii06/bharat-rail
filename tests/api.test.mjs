@@ -146,8 +146,8 @@ describe('auth API', () => {
   });
 });
 
-describe('authorization on planned endpoints', () => {
-  test('planned endpoint needs sign-in', async () => assert.equal((await call('GET', '/incidents')).status, 401));
+describe('authorization', () => {
+  test('incident list needs sign-in', async () => assert.equal((await call('GET', '/incidents')).status, 401));
 
   test('employee cannot reach manager-only reports', async () => {
     const r = await call('GET', '/reports/overview', { token: await login('emp@test.local') });
@@ -159,10 +159,18 @@ describe('authorization on planned endpoints', () => {
     assert.equal((await call('POST', '/incidents/INC1/assignment', { token: await login('tech@test.local'), body: {} })).status, 403);
   });
 
-  test('allowed role gets 501 on endpoints not built yet', async () => {
-    const r = await call('GET', '/audit', { token: await login('mgr@test.local') });
-    assert.equal(r.status, 501);
-    assert.equal(r.body.error.code, 'NOT_IMPLEMENTED');
+  test('only the IT manager can search the audit log', async () => {
+    const r = await call('GET', '/audit', { token: await login('emp@test.local') });
+    assert.equal(r.status, 403);
+    assert.equal(r.body.error.code, 'FORBIDDEN');
+  });
+
+  test('technicians cannot edit incidents', async () => {
+    assert.equal((await call('PATCH', '/incidents/INC1', { token: await login('tech@test.local'), body: { title: 'Changed title' } })).status, 403);
+  });
+
+  test('only the IT manager can add categories', async () => {
+    assert.equal((await call('POST', '/admin/categories', { token: await login('emp@test.local'), body: { label: 'Mobile app', team: 'APPLICATION' } })).status, 403);
   });
 
   test('unknown path outside the API returns 404 JSON', async () => {

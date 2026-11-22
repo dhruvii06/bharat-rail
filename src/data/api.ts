@@ -1,5 +1,5 @@
 import type {
-  Action, AdminUser, Category, CreatedIncident, CustomerIncidentInput, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
+  Action, AdminUser, AuditSearchEntry, Category, CreatedIncident, CustomerIncidentInput, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
   Overview, Service, Settings, SlaPolicy, Technician, User
 } from '../../shared/domain.ts';
 
@@ -87,6 +87,10 @@ export const api = {
   note: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/notes`, { text }),
   changePriority: (id: string, priority: string, reason: string) =>
     request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/priority`, { priority, reason }),
+  edit: (id: string, patch: { title?: string; description?: string; category?: string }) =>
+    request<Incident>('PATCH', `/incidents/${encodeURIComponent(id)}`, patch),
+  audit: (filters: Record<string, string>) =>
+    request<AuditSearchEntry[]>('GET', `/audit?${new URLSearchParams(Object.entries(filters).filter(([, v]) => v !== ''))}`),
   message: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/messages`, { text }),
   feedback: (id: string, rating: number) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/feedback`, { rating }),
   requestInfo: (id: string, question: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/info-request`, { question }),
@@ -113,14 +117,15 @@ export const api = {
     saveTechnician: (id: number | string, profile: { skill?: string; experienceYears?: number; available?: boolean }) =>
       request<Technician>('PUT', `/admin/technicians/${encodeURIComponent(String(id))}`, profile),
     services: () => request<Service[]>('GET', '/admin/services'),
-    createService: (service: { name: string; category: string; criticality: Criticality }) => request<Service>('POST', '/admin/services', service),
-    updateService: (id: number, patch: { name?: string; category?: string; criticality?: Criticality }) =>
+    createService: (service: { name: string; category: string; criticality: Criticality; tatkalBookingPath: boolean }) => request<Service>('POST', '/admin/services', service),
+    updateService: (id: number, patch: { name?: string; category?: string; criticality?: Criticality; tatkalBookingPath?: boolean }) =>
       request<Service>('PATCH', `/admin/services/${id}`, patch),
     slaPolicies: () => request<SlaPolicy[]>('GET', '/admin/sla-policies'),
     updateSlaPolicy: (priority: string, responseMinutes: number, resolutionMinutes: number) =>
       request<SlaPolicy>('PUT', `/admin/sla-policies/${priority}`, { responseMinutes, resolutionMinutes }),
     categories: () => request<Category[]>('GET', '/admin/categories'),
-    updateCategory: (code: string, patch: { label?: string; active?: boolean }) => request<Category>('PATCH', `/admin/categories/${code}`, patch),
+    createCategory: (label: string, team: string) => request<Category>('POST', '/admin/categories', { label, team }),
+    updateCategory: (code: string, patch: { label?: string; active?: boolean; team?: string }) => request<Category>('PATCH', `/admin/categories/${code}`, patch),
     settings: () => request<Settings>('GET', '/admin/settings'),
     updateSettings: (defaultAssignmentStrategy: string) => request<Settings>('PUT', '/admin/settings', { defaultAssignmentStrategy })
   }

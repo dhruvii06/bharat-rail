@@ -43,6 +43,8 @@ public final class Snapshot {
     private final Map<String, IntegrationQueries.Extras> extras;
     private final Map<String, Instant> resolvedAt;
     private final Set<Long> inactive;
+    private final Map<String, IncidentCategory> categories = new LinkedHashMap<>();
+    private final Set<Long> tatkalServices;
 
     Snapshot(UserRepository userRepo, ServiceAndSlaRepository serviceRepo, IncidentRepository incidentRepo, IntegrationQueries queries) {
         for (Role role : Role.values()) for (com.irctc.itsm.model.User u : userRepo.findByRole(role)) users.put(u.getUserId(), u);
@@ -53,7 +55,18 @@ public final class Snapshot {
         this.extras = queries.extras();
         this.resolvedAt = queries.resolvedAt();
         this.inactive = queries.inactiveUserIds();
+        for (IntegrationQueries.CategoryRow c : queries.categories()) categories.put(c.code(), Mapping.category(c.code(), c.label(), c.skill()));
+        this.tatkalServices = queries.tatkalServiceIds();
     }
+
+    /** A category by code, including ones the IT manager added or switched off. */
+    public IncidentCategory category(String code) {
+        IncidentCategory c = categories.get(code == null ? "" : code.trim().toUpperCase(java.util.Locale.ROOT));
+        if (c == null) throw new IllegalArgumentException("Unknown incident category: " + code);
+        return c;
+    }
+
+    public boolean onTatkalPath(long serviceId) { return tatkalServices.contains(serviceId); }
 
     public boolean isActive(long userId) { return !inactive.contains(userId); }
 
@@ -118,7 +131,7 @@ public final class Snapshot {
     public RailwayService service(long id) {
         ITService s = services.get(id);
         if (s == null) throw new IllegalArgumentException("Unknown service " + id);
-        return new RailwayService(Ids.service(id), s.getServiceName(), Mapping.criticality(s.getBusinessCriticality()));
+        return new RailwayService(Ids.service(id), s.getServiceName(), Mapping.criticality(s.getBusinessCriticality()), onTatkalPath(id));
     }
 
     /** Rebuilds the domain aggregate in its stored state so the lifecycle rules can check the next action. */
@@ -126,12 +139,12 @@ public final class Snapshot {
         IncidentStatus status = IncidentStatus.valueOf(dto.getStatus().name());
         boolean active = status == IncidentStatus.ASSIGNED || status == IncidentStatus.ACKNOWLEDGED || status == IncidentStatus.IN_PROGRESS;
         Technician assignee = dto.getAssignedTechnicianId() == null ? null : technician(dto.getAssignedTechnicianId(), active ? 1 : 0);
-        IncidentCategory category = Mapping.category(dto.getCategory());
+        IncidentCategory category = category(dto.getCategory());
         Priority priority = dto.getPriority() == null ? null : Mapping.priority(dto.getPriority());
         return Incident.restore(Ids.incident(dto.getIncidentId()), dto.getTitle(), dto.getDescription(),
                 reporter(dto.getReporterId()), service(dto.getServiceId()), category,
                 Mapping.impact(dto.getImpact()), Mapping.urgency(dto.getUrgency()), affectedUsers(dto.getIncidentId()),
-                category == IncidentCategory.SECURITY, dto.isTatkalWindow(), Mapping.instant(dto.getCreatedAt()),
+                category.isSecurity(), dto.isTatkalWindow(), Mapping.instant(dto.getCreatedAt()),
                 status, priority, assignee, acknowledgedAt(dto.getIncidentId()), resolvedAt(dto.getIncidentId()), null,
                 storedSlaPolicy(dto, priority), infoRequest(dto.getIncidentId()), infoRequestedAt(dto.getIncidentId()));
     }

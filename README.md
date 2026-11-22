@@ -68,7 +68,7 @@ mvn -f java/domain/pom.xml test-compile exec:java -Dexec.mainClass=com.railway.i
 ```text
 src/                    React UI: pages/, components/, auth.tsx (session), data/api.ts (HTTP client)
 shared/domain.ts        JSON contract shared by UI and API; priority preview
-backend/                Node API: auth/, routes/ (incidents forwarded, planned 501s), http/incidentService.ts, db/
+backend/                Node API: auth/, routes/ (incidents forwarded to the Java service), http/incidentService.ts, db/
 java/domain/            Domain model and rules: Incident lifecycle, strategies, events
 java/persistence/       PostgreSQL schema, seed, integration migration, JDBC repositories
 java/service/           Incident service: adapters between domain and persistence, HTTP API, notifications, SLA monitor

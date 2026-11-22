@@ -6,15 +6,15 @@ import java.time.Instant;
 import java.util.*;
 public final class Incident {
     private final UUID id;
-    private final String title;
-    private final String description;
+    private String title;
+    private String description;
     private final Reporter reporter;
     private final RailwayService affectedService;
-    private final IncidentCategory category;
+    private IncidentCategory category;
     private final Impact impact;
     private final Urgency urgency;
     private final int affectedUsers;
-    private final boolean criticalSecurityIncident;
+    private boolean criticalSecurityIncident;
     private final boolean peakTatkalIncident;
     private final Instant createdAt;
     private final List<AuditEntry> auditTrail=new ArrayList<>();
@@ -44,7 +44,9 @@ public final class Incident {
         this.affectedService=Objects.requireNonNull(affectedService);this.category=Objects.requireNonNull(category);
         this.impact=Objects.requireNonNull(impact);this.urgency=Objects.requireNonNull(urgency);
         this.affectedUsers=affectedUsers;this.criticalSecurityIncident=criticalSecurityIncident;
-        this.peakTatkalIncident=peakTatkalIncident;this.createdAt=Objects.requireNonNull(createdAt);
+        // The Tatkal override only applies to services a Tatkal booking depends on; a catering or
+        // enquiry fault reported at 10:05 is judged on impact, urgency and criticality alone.
+        this.peakTatkalIncident=peakTatkalIncident&&affectedService.isOnTatkalBookingPath();this.createdAt=Objects.requireNonNull(createdAt);
     }
     /**
      * Rebuilds an incident that was saved earlier, in its saved state, so the lifecycle rules
@@ -160,6 +162,39 @@ public final class Incident {
         Priority old=priority;
         priority=newPriority;slaPolicy=newPolicy;
         record(actor,"PRIORITY_CHANGED",status,status,old+" -> "+newPriority+": "+reason.trim(),Objects.requireNonNull(now));
+    }
+    /**
+     * Corrects the incident's text or category. The reporter may fix the title and description until a
+     * technician acknowledges the incident; the IT manager may edit any open incident and is the only one
+     * who may change the category (which can change the security rule, so callers re-check priority).
+     * Technicians cannot edit: they add notes instead.
+     */
+    public void edit(User actor,String newTitle,String newDescription,IncidentCategory newCategory,Instant now){
+        Objects.requireNonNull(actor,"actor");
+        if(status==IncidentStatus.RESOLVED||status==IncidentStatus.VERIFIED||status==IncidentStatus.CLOSED)
+            throw new InvalidTransitionException("A "+status+" incident can no longer be edited");
+        boolean manager=actor instanceof Administrator;
+        if(!manager){
+            if(!(actor instanceof Reporter)||!reporter.getId().equals(actor.getId()))
+                throw new UnauthorizedIncidentOperationException("Only the reporter or the IT manager can edit an incident");
+            if(status!=IncidentStatus.NEW&&status!=IncidentStatus.CLASSIFIED&&status!=IncidentStatus.ASSIGNED)
+                throw new InvalidTransitionException("The technician is already working on it; send a message instead of editing");
+            if(newCategory!=null&&!newCategory.equals(category))
+                throw new UnauthorizedIncidentOperationException("Only the IT manager can change the category");
+        }
+        if(newTitle!=null&&newTitle.isBlank()||newDescription!=null&&newDescription.isBlank())
+            throw new IllegalArgumentException("Title and description cannot be blank");
+        List<String> changes=new ArrayList<>();
+        if(newTitle!=null&&!newTitle.equals(title)){changes.add("title");}
+        if(newDescription!=null&&!newDescription.equals(description)){changes.add("description");}
+        boolean recategorised=newCategory!=null&&!newCategory.equals(category);
+        if(changes.isEmpty()&&!recategorised) throw new IllegalArgumentException("Nothing was changed");
+        String details=changes.isEmpty()?"":"Updated "+String.join(" and ",changes);
+        if(recategorised) details=(details.isEmpty()?"":details+"; ")+"category "+category.code()+" -> "+newCategory.code();
+        if(newTitle!=null)title=newTitle;
+        if(newDescription!=null)description=newDescription;
+        if(recategorised){category=newCategory;criticalSecurityIncident=newCategory.isSecurity();}
+        record(actor,"EDITED",status,status,details,Objects.requireNonNull(now));
     }
     private void requireAssignedActor(Technician actor){
         if(actor==null||assignedTechnician==null||!assignedTechnician.getId().equals(actor.getId()))

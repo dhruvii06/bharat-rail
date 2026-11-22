@@ -11,6 +11,7 @@ import com.irctc.itsm.repository.ServiceAndSlaRepository;
 import com.irctc.itsm.repository.UserRepository;
 import com.railway.itsm.application.IncidentManagementService;
 import com.railway.itsm.domain.enums.Impact;
+import com.irctc.itsm.repository.impl.DatabaseConnection;
 import com.railway.itsm.domain.enums.IncidentCategory;
 import com.railway.itsm.domain.enums.IncidentStatus;
 import com.railway.itsm.domain.enums.Priority;
@@ -115,13 +116,18 @@ public class IncidentWorkflowService {
     }
 
     public List<ServiceView> services() {
-        return catalogue.findAllServices().stream().map(this::serviceView).toList();
+        Set<Long> tatkal = queries.tatkalServiceIds();
+        return catalogue.findAllServices().stream().map(svc -> serviceView(svc, tatkal)).toList();
     }
 
     /** Categories reporters can choose: the ones the IT manager has not switched off. */
     public List<CategoryView> categories() {
-        return queries.categories().stream().filter(IntegrationQueries.CategoryRow::active)
-                .map(c -> new CategoryView(c.code(), c.label(), true)).toList();
+        return queries.categories().stream().filter(IntegrationQueries.CategoryRow::active).map(IncidentWorkflowService::categoryView).toList();
+    }
+
+    private static CategoryView categoryView(IntegrationQueries.CategoryRow c) {
+        return new CategoryView(c.code(), c.label(), c.active(), c.skill(),
+                IncidentCategory.standard().stream().anyMatch(std -> std.code().equals(c.code())));
     }
 
     public List<String> assignmentStrategies() { return assignmentStrategies.keySet().stream().sorted().toList(); }
@@ -171,172 +177,182 @@ public class IncidentWorkflowService {
     // =====================================================================================
 
     public synchronized CreatedIncident report(Actor actor, NewIncident in) {
-        actor.requireReporter("report incidents");
-        String title = text(in.title(), "title", 5, 120);
-        String description = text(in.description(), "description", 10, 4000);
-        if (in.serviceId() == null) throw new IllegalArgumentException("Choose the affected service.");
-        Snapshot s = snapshot();
-        Instant now = clock.instant();
-        Reporter reporter = s.reporter(actor.userId());
-        RailwayService service = s.service(in.serviceId());
+        return DatabaseConnection.inTransaction(() -> {
+            actor.requireReporter("report incidents");
+            String title = text(in.title(), "title", 5, 120);
+            String description = text(in.description(), "description", 10, 4000);
+            if (in.serviceId() == null) throw new IllegalArgumentException("Choose the affected service.");
+            Snapshot s = snapshot();
+            Instant now = clock.instant();
+            Reporter reporter = s.reporter(actor.userId());
+            RailwayService service = s.service(in.serviceId());
 
-        IncidentCategory category;
-        int impact, urgency, affected;
-        boolean tatkal;
-        String customerAssessment = null;
-        if (actor.isCustomer()) {
-            // Customers only describe what happened. Their answers decide impact and urgency, the
-            // category comes from the service, and any ratings they send are ignored.
-            CustomerReportAssessment.Result r = CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(
-                    effect(in.effect()), Boolean.TRUE.equals(in.moneyTaken()), Boolean.TRUE.equals(in.stillHappening())));
-            impact = r.impact().score(); urgency = r.urgency().score(); affected = 1;
-            category = Mapping.category(s.services().get(in.serviceId()).getCategory());
-            tatkal = TatkalWindow.contains(now);
-            customerAssessment = r.explanation();
-        } else {
-            category = Mapping.category(Objects.requireNonNullElse(in.category(), ""));
-            if (queries.categories().stream().noneMatch(c -> c.code().equals(category.name()) && c.active()))
-                throw new IllegalArgumentException("The category " + category.name() + " is not available. Choose another category.");
-            impact = range(in.impact(), "impact", 1, 3); urgency = range(in.urgency(), "urgency", 1, 3);
-            affected = in.affectedUsers() == null ? 0 : range(in.affectedUsers(), "affected passengers", 0, 100_000_000);
-            tatkal = Boolean.TRUE.equals(in.tatkalWindow()) || TatkalWindow.contains(now);
-        }
+            IncidentCategory category;
+            int impact, urgency, affected;
+            boolean tatkal;
+            String customerAssessment = null;
+            if (actor.isCustomer()) {
+                // Customers only describe what happened. Their answers decide impact and urgency, the
+                // category comes from the service, and any ratings they send are ignored.
+                CustomerReportAssessment.Result r = CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(
+                        effect(in.effect()), Boolean.TRUE.equals(in.moneyTaken()), Boolean.TRUE.equals(in.stillHappening())));
+                impact = r.impact().score(); urgency = r.urgency().score(); affected = 1;
+                category = s.category(s.services().get(in.serviceId()).getCategory());
+                tatkal = TatkalWindow.contains(now);
+                customerAssessment = r.explanation();
+            } else {
+                category = s.category(Objects.requireNonNullElse(in.category(), ""));
+                if (queries.categories().stream().noneMatch(c -> c.code().equals(category.name()) && c.active()))
+                    throw new IllegalArgumentException("The category " + category.name() + " is not available. Choose another category.");
+                impact = range(in.impact(), "impact", 1, 3); urgency = range(in.urgency(), "urgency", 1, 3);
+                affected = in.affectedUsers() == null ? 0 : range(in.affectedUsers(), "affected passengers", 0, 100_000_000);
+                tatkal = Boolean.TRUE.equals(in.tatkalWindow()) || TatkalWindow.contains(now);
+            }
 
-        // Domain: build the incident, let the priority strategy classify it, look for duplicates.
-        Incident incident = new Incident(title, description, reporter, service, category, Impact.values()[impact - 1],
-                Urgency.values()[urgency - 1], affected, category == IncidentCategory.SECURITY, tatkal, now);
-        Priority priority = priorityStrategy.calculate(incident);
-        com.irctc.itsm.model.Priority dbPriority = Mapping.priority(priority);
-        com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
-                .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
-        incident.classify(priority, new SLAPolicy(priority, Duration.ofMinutes(configured.getResponseTargetMins()),
-                Duration.ofMinutes(configured.getResolutionTargetMins())), reporter, now);
-        List<SimilarView> duplicates = similarTo(s, incident);
+            // Domain: build the incident, let the priority strategy classify it, look for duplicates.
+            Incident incident = new Incident(title, description, reporter, service, category, Impact.values()[impact - 1],
+                    Urgency.values()[urgency - 1], affected, category.isSecurity(), tatkal, now);   // domain keeps Tatkal only for booking-path services
+            Priority priority = priorityStrategy.calculate(incident);
+            com.irctc.itsm.model.Priority dbPriority = Mapping.priority(priority);
+            com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
+                    .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
+            incident.classify(priority, new SLAPolicy(priority, Duration.ofMinutes(configured.getResponseTargetMins()),
+                    Duration.ofMinutes(configured.getResolutionTargetMins())), reporter, now);
+            List<SimilarView> duplicates = similarTo(s, incident);
 
-        // Persistence: store the classified incident and its audit trail.
-        String id = queries.nextIncidentId();
-        Long slaId = configured.getSlaId();
-        com.irctc.itsm.model.Incident dto = new com.irctc.itsm.model.Incident();
-        dto.setIncidentId(id); dto.setReporterId(actor.userId()); dto.setServiceId(in.serviceId()); dto.setCategory(category.name());
-        dto.setTitle(title); dto.setDescription(description); dto.setImpact(Mapping.level(impact)); dto.setUrgency(Mapping.level(urgency));
-        dto.setPriority(dbPriority); dto.setTatkalWindow(tatkal); dto.setStatus(com.irctc.itsm.model.IncidentStatus.CLASSIFIED);
-        dto.setSlaId(slaId); dto.setCreatedAt(Mapping.local(now));
-        dto.setSlaResponseDeadline(Mapping.local(now.plus(incident.getSlaPolicy().responseTarget())));
-        dto.setSlaResolutionDeadline(Mapping.local(now.plus(incident.getSlaPolicy().resolutionTarget())));
-        incidents.save(dto);
-        queries.setAffectedUsers(id, affected);
-        audit.save(new AuditLog(id, actor.userId(), "INCIDENT_CREATED", null, "NEW", "Reported by " + reporter.getName()));
-        if (customerAssessment != null)
-            audit.save(new AuditLog(id, null, "CUSTOMER_ASSESSMENT", "NEW", "NEW", customerAssessment));
-        audit.save(new AuditLog(id, null, "PRIORITY_ASSIGNED", "NEW", "CLASSIFIED", PriorityExplainer.explain(incident, priority)));
-        if (!duplicates.isEmpty())
-            audit.save(new AuditLog(id, null, "POSSIBLE_DUPLICATE", "CLASSIFIED", "CLASSIFIED",
-                    "Similar open incidents: " + duplicates.stream().map(SimilarView::id).collect(Collectors.joining(", "))));
+            // Persistence: store the classified incident and its audit trail.
+            String id = queries.nextIncidentId();
+            Long slaId = configured.getSlaId();
+            com.irctc.itsm.model.Incident dto = new com.irctc.itsm.model.Incident();
+            dto.setIncidentId(id); dto.setReporterId(actor.userId()); dto.setServiceId(in.serviceId()); dto.setCategory(category.name());
+            dto.setTitle(title); dto.setDescription(description); dto.setImpact(Mapping.level(impact)); dto.setUrgency(Mapping.level(urgency));
+            dto.setPriority(dbPriority); dto.setTatkalWindow(incident.isPeakTatkalIncident()); dto.setStatus(com.irctc.itsm.model.IncidentStatus.CLASSIFIED);
+            dto.setSlaId(slaId); dto.setCreatedAt(Mapping.local(now));
+            dto.setSlaResponseDeadline(Mapping.local(now.plus(incident.getSlaPolicy().responseTarget())));
+            dto.setSlaResolutionDeadline(Mapping.local(now.plus(incident.getSlaPolicy().resolutionTarget())));
+            incidents.save(dto);
+            queries.setAffectedUsers(id, affected);
+            audit.save(new AuditLog(id, actor.userId(), "INCIDENT_CREATED", null, "NEW", "Reported by " + reporter.getName()));
+            if (customerAssessment != null)
+                audit.save(new AuditLog(id, null, "CUSTOMER_ASSESSMENT", "NEW", "NEW", customerAssessment));
+            audit.save(new AuditLog(id, null, "PRIORITY_ASSIGNED", "NEW", "CLASSIFIED", PriorityExplainer.explain(incident, priority)));
+            if (!duplicates.isEmpty())
+                audit.save(new AuditLog(id, null, "POSSIBLE_DUPLICATE", "CLASSIFIED", "CLASSIFIED",
+                        "Similar open incidents: " + duplicates.stream().map(SimilarView::id).collect(Collectors.joining(", "))));
 
-        publish(id, "CREATED", "New " + dbPriority + " incident " + id + " on " + service.getName() + ": " + title);
-        publish(id, "RECEIVED", "We received your report " + id + ": " + title + ". Our IT team will look into it.");
-        return new CreatedIncident(detail(actor, id), actor.isCustomer() ? List.of() : duplicates);
+            publish(id, "CREATED", "New " + dbPriority + " incident " + id + " on " + service.getName() + ": " + title);
+            publish(id, "RECEIVED", "We received your report " + id + ": " + title + ". Our IT team will look into it.");
+            return new CreatedIncident(detail(actor, id), actor.isCustomer() ? List.of() : duplicates);
+        });
     }
 
     public synchronized IncidentView assign(Actor actor, String id, String strategyName, Long technicianId) {
-        actor.require(Actor.ADMIN, "assign incidents");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        Incident incident = s.restore(dto);
-        Administrator manager = s.administrator(actor.userId());
-        Technician technician;
-        String how;
-        if (technicianId != null) {
-            if (!s.technicianDetails().containsKey(technicianId)) throw new IllegalArgumentException("Unknown technician " + technicianId + ".");
-            technician = s.technician(technicianId, 0);
-            how = "chosen by the manager";
-        } else {
-            String key = strategyName == null || strategyName.isBlank() ? defaultStrategy() : strategyName.trim().toLowerCase(Locale.ROOT);
-            AssignmentStrategy strategy = assignmentStrategies.get(key);
-            if (strategy == null) throw new IllegalArgumentException("Unknown assignment strategy '" + strategyName + "'. Use one of " + assignmentStrategies() + ".");
-            technician = strategy.select(incident, s.technicians());   // throws NoTechnicianAvailableException
-            how = "selected by the " + key + "-based strategy";
-        }
-        incident.assign(technician, manager, clock.instant());           // domain checks state, availability and capacity
-        long technicianUserId = userIdOf(s, technician);
-        incidents.assignTechnician(id, technicianUserId, actor.userId());
-        audit.save(new AuditLog(id, actor.userId(), "ASSIGNMENT_REASON", "ASSIGNED", "ASSIGNED", technician.getName() + " " + how));
-        publish(id, "ASSIGNED", id + " assigned to " + technician.getName() + ": " + dto.getTitle());
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "assign incidents");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            Administrator manager = s.administrator(actor.userId());
+            Technician technician;
+            String how;
+            if (technicianId != null) {
+                if (!s.technicianDetails().containsKey(technicianId)) throw new IllegalArgumentException("Unknown technician " + technicianId + ".");
+                technician = s.technician(technicianId, 0);
+                how = "chosen by the manager";
+            } else {
+                String key = strategyName == null || strategyName.isBlank() ? defaultStrategy() : strategyName.trim().toLowerCase(Locale.ROOT);
+                AssignmentStrategy strategy = assignmentStrategies.get(key);
+                if (strategy == null) throw new IllegalArgumentException("Unknown assignment strategy '" + strategyName + "'. Use one of " + assignmentStrategies() + ".");
+                technician = strategy.select(incident, s.technicians());   // throws NoTechnicianAvailableException
+                how = "selected by the " + key + "-based strategy";
+            }
+            incident.assign(technician, manager, clock.instant());           // domain checks state, availability and capacity
+            long technicianUserId = userIdOf(s, technician);
+            incidents.assignTechnician(id, technicianUserId, actor.userId());
+            audit.save(new AuditLog(id, actor.userId(), "ASSIGNMENT_REASON", "ASSIGNED", "ASSIGNED", technician.getName() + " " + how));
+            publish(id, "ASSIGNED", id + " assigned to " + technician.getName() + ": " + dto.getTitle());
+            return detail(actor, id);
+        });
     }
 
     public synchronized IncidentView transition(Actor actor, String id, String action, String summary, String rootCause) {
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        Incident incident = s.restore(dto);
-        Instant now = clock.instant();
-        String act = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
-        switch (act) {
-            case "ACKNOWLEDGE" -> {
-                actor.require(Actor.TECHNICIAN, "acknowledge incidents");
-                incident.acknowledge(s.technician(actor.userId(), 0), now);
-                incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.ACKNOWLEDGED, actor.userId());
-                queries.setAcknowledgedAt(id, now);
-                publish(id, "ACKNOWLEDGED", id + " acknowledged by " + s.userName(actor.userId()));
+        return DatabaseConnection.inTransaction(() -> {
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            Instant now = clock.instant();
+            String act = action == null ? "" : action.trim().toUpperCase(Locale.ROOT);
+            switch (act) {
+                case "ACKNOWLEDGE" -> {
+                    actor.require(Actor.TECHNICIAN, "acknowledge incidents");
+                    incident.acknowledge(s.technician(actor.userId(), 0), now);
+                    incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.ACKNOWLEDGED, actor.userId());
+                    queries.setAcknowledgedAt(id, now);
+                    publish(id, "ACKNOWLEDGED", id + " acknowledged by " + s.userName(actor.userId()));
+                }
+                case "START" -> {
+                    actor.require(Actor.TECHNICIAN, "start investigations");
+                    incident.startInvestigation(s.technician(actor.userId(), 0), now);
+                    incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.IN_PROGRESS, actor.userId());
+                    publish(id, "IN_PROGRESS", "Investigation started on " + id);
+                }
+                case "RESOLVE" -> {
+                    actor.require(Actor.TECHNICIAN, "resolve incidents");
+                    String fix = text(summary, "resolution summary", 10, 4000);
+                    String cause = text(rootCause, "root cause", 3, 2000);
+                    incident.resolve(s.technician(actor.userId(), 0), fix, cause, now);
+                    resolutions.resolveIncident(new Resolution(id, actor.userId(), cause, fix));
+                    publish(id, "RESOLVED", id + " resolved: " + fix);
+                }
+                case "VERIFY" -> {
+                    actor.requireReporter("verify resolutions");
+                    incident.verify(s.reporter(actor.userId()), now);
+                    incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.VERIFIED, actor.userId());
+                    publish(id, "VERIFIED", "Reporter confirmed the fix for " + id);
+                }
+                case "CLOSE" -> {
+                    actor.require(Actor.ADMIN, "close incidents");
+                    incident.close(s.administrator(actor.userId()), now);
+                    incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.CLOSED, actor.userId());
+                    publish(id, "CLOSED", id + " closed");
+                }
+                default -> throw new IllegalArgumentException("Unknown action '" + action + "'. Use ACKNOWLEDGE, START, RESOLVE, VERIFY or CLOSE.");
             }
-            case "START" -> {
-                actor.require(Actor.TECHNICIAN, "start investigations");
-                incident.startInvestigation(s.technician(actor.userId(), 0), now);
-                incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.IN_PROGRESS, actor.userId());
-                publish(id, "IN_PROGRESS", "Investigation started on " + id);
-            }
-            case "RESOLVE" -> {
-                actor.require(Actor.TECHNICIAN, "resolve incidents");
-                String fix = text(summary, "resolution summary", 10, 4000);
-                String cause = text(rootCause, "root cause", 3, 2000);
-                incident.resolve(s.technician(actor.userId(), 0), fix, cause, now);
-                resolutions.resolveIncident(new Resolution(id, actor.userId(), cause, fix));
-                publish(id, "RESOLVED", id + " resolved: " + fix);
-            }
-            case "VERIFY" -> {
-                actor.requireReporter("verify resolutions");
-                incident.verify(s.reporter(actor.userId()), now);
-                incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.VERIFIED, actor.userId());
-                publish(id, "VERIFIED", "Reporter confirmed the fix for " + id);
-            }
-            case "CLOSE" -> {
-                actor.require(Actor.ADMIN, "close incidents");
-                incident.close(s.administrator(actor.userId()), now);
-                incidents.updateStatus(id, com.irctc.itsm.model.IncidentStatus.CLOSED, actor.userId());
-                publish(id, "CLOSED", id + " closed");
-            }
-            default -> throw new IllegalArgumentException("Unknown action '" + action + "'. Use ACKNOWLEDGE, START, RESOLVE, VERIFY or CLOSE.");
-        }
-        return detail(actor, id);
+            return detail(actor, id);
+        });
     }
 
     /** Technician step: ask the reporter for more information (the domain checks who and when). */
     public synchronized IncidentView requestInformation(Actor actor, String id, String question) {
-        actor.require(Actor.TECHNICIAN, "request information");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        Incident incident = s.restore(dto);
-        String text = text(question, "question", 5, 1000);
-        Instant now = clock.instant();
-        incident.requestInformation(s.technician(actor.userId(), 0), text, now);
-        queries.setInfoRequest(id, text, now);
-        audit.save(new AuditLog(id, actor.userId(), "INFO_REQUESTED", dto.getStatus().name(), dto.getStatus().name(), text));
-        publish(id, "INFO_REQUESTED", s.userName(actor.userId()) + " needs more information on " + id + ": " + text);
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "request information");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            String text = text(question, "question", 5, 1000);
+            Instant now = clock.instant();
+            incident.requestInformation(s.technician(actor.userId(), 0), text, now);
+            queries.setInfoRequest(id, text, now);
+            audit.save(new AuditLog(id, actor.userId(), "INFO_REQUESTED", dto.getStatus().name(), dto.getStatus().name(), text));
+            publish(id, "INFO_REQUESTED", s.userName(actor.userId()) + " needs more information on " + id + ": " + text);
+            return detail(actor, id);
+        });
     }
 
     /** Employee step: the reporter answers the technician's question. */
     public synchronized IncidentView provideInformation(Actor actor, String id, String answer) {
-        actor.requireReporter("answer information requests");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        Incident incident = s.restore(dto);
-        String text = text(answer, "answer", 2, 2000);
-        incident.provideInformation(s.reporter(actor.userId()), text, clock.instant());
-        queries.clearInfoRequest(id);
-        audit.save(new AuditLog(id, actor.userId(), "INFO_PROVIDED", dto.getStatus().name(), dto.getStatus().name(), text));
-        publish(id, "INFO_PROVIDED", "The reporter answered the question on " + id + ": " + text);
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.requireReporter("answer information requests");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            String text = text(answer, "answer", 2, 2000);
+            incident.provideInformation(s.reporter(actor.userId()), text, clock.instant());
+            queries.clearInfoRequest(id);
+            audit.save(new AuditLog(id, actor.userId(), "INFO_PROVIDED", dto.getStatus().name(), dto.getStatus().name(), text));
+            publish(id, "INFO_PROVIDED", "The reporter answered the question on " + id + ": " + text);
+            return detail(actor, id);
+        });
     }
 
     /**
@@ -344,32 +360,113 @@ public class IncidentWorkflowService {
      * incident's creation time with the configured SLA targets for the new priority, so raising the
      * priority makes it urgent at once and lowering it cannot erase a breach already recorded.
      */
-    public synchronized IncidentView changePriority(Actor actor, String id, String priorityText, String reason) {
-        actor.require(Actor.ADMIN, "change priority");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        com.irctc.itsm.model.Priority dbPriority;
-        try { dbPriority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").trim().toUpperCase(Locale.ROOT)); }
-        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
-        if (dto.getPriority() == dbPriority) throw new IllegalArgumentException("The incident is already " + dbPriority + ".");
-        String why = text(reason, "reason", 5, 500);
-        com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
-                .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
-        Priority newPriority = Mapping.priority(dbPriority);
-        SLAPolicy policy = new SLAPolicy(newPriority, Duration.ofMinutes(configured.getResponseTargetMins()), Duration.ofMinutes(configured.getResolutionTargetMins()));
-        Incident incident = s.restore(dto);
-        String old = dto.getPriority() == null ? "none" : dto.getPriority().name();
-        incident.changePriority(newPriority, policy, s.administrator(actor.userId()), why, clock.instant());   // domain checks state and reason
+    /**
+     * Corrects an incident's title, description or (IT manager only) category. The domain decides who may
+     * edit and when. A category change can switch the security rule on or off, so the priority is
+     * recalculated, unless the IT manager had already set it by hand.
+     */
+    public synchronized IncidentView edit(Actor actor, String id, String title, String description, String categoryCode) {
+        return DatabaseConnection.inTransaction(() -> {
+            if (actor.isTechnician()) throw new SecurityException("Technicians cannot edit incidents; add a note instead.");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            String newTitle = title == null ? null : text(title, "title", 5, 120);
+            String newDescription = description == null ? null : text(description, "description", 10, 4000);
+            IncidentCategory newCategory = categoryCode == null ? null : s.category(categoryCode);
+            Incident incident = s.restore(dto);
+            Priority calculatedBefore = priorityStrategy.calculate(incident);
+            boolean manualOverride = incident.getPriority() != null && incident.getPriority() != calculatedBefore;
+            String oldCategory = incident.getCategory().code();
+            com.railway.itsm.domain.model.User editor = actor.isAdmin() ? s.administrator(actor.userId()) : s.reporter(actor.userId());
+            Instant now = clock.instant();
+            incident.edit(editor, newTitle, newDescription, newCategory, now);   // domain checks role, state and changes
+            String details = incident.getAuditTrail().get(incident.getAuditTrail().size() - 1).details();
 
-        Instant created = Mapping.instant(dto.getCreatedAt());
-        dto.setPriority(dbPriority);
-        dto.setSlaId(configured.getSlaId());
-        dto.setSlaResponseDeadline(Mapping.local(created.plus(policy.responseTarget())));
-        dto.setSlaResolutionDeadline(Mapping.local(created.plus(policy.resolutionTarget())));
-        incidents.save(dto);
-        audit.save(new AuditLog(id, actor.userId(), "PRIORITY_CHANGED", dto.getStatus().name(), dto.getStatus().name(), old + " -> " + dbPriority + ": " + why));
-        publish(id, "PRIORITY_CHANGED", "Priority of " + id + " changed from " + old + " to " + dbPriority + " by " + s.userName(actor.userId()) + ": " + why);
-        return detail(actor, id);
+            dto.setTitle(incident.getTitle());
+            dto.setDescription(incident.getDescription());
+            dto.setCategory(incident.getCategory().code());
+            String priorityNote = null;
+            if (!oldCategory.equals(incident.getCategory().code()) && !manualOverride) {
+                Priority recalculated = priorityStrategy.calculate(incident);
+                if (recalculated != incident.getPriority()) {
+                    com.irctc.itsm.model.Priority dbPriority = Mapping.priority(recalculated);
+                    com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
+                            .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
+                    SLAPolicy policy = new SLAPolicy(recalculated, Duration.ofMinutes(configured.getResponseTargetMins()), Duration.ofMinutes(configured.getResolutionTargetMins()));
+                    String old = dto.getPriority().name();
+                    incident.changePriority(recalculated, policy, s.administrator(actor.userId()), "category changed to " + incident.getCategory().label(), now);
+                    Instant created = Mapping.instant(dto.getCreatedAt());
+                    dto.setPriority(dbPriority);
+                    dto.setSlaId(configured.getSlaId());
+                    dto.setSlaResponseDeadline(Mapping.local(created.plus(policy.responseTarget())));
+                    dto.setSlaResolutionDeadline(Mapping.local(created.plus(policy.resolutionTarget())));
+                    priorityNote = old + " -> " + dbPriority + ": recalculated because the category changed to " + incident.getCategory().label();
+                }
+            }
+            incidents.save(dto);
+            audit.save(new AuditLog(id, actor.userId(), "INCIDENT_EDITED", dto.getStatus().name(), dto.getStatus().name(), details));
+            if (priorityNote != null) {
+                audit.save(new AuditLog(id, actor.userId(), "PRIORITY_CHANGED", dto.getStatus().name(), dto.getStatus().name(), priorityNote));
+                publish(id, "PRIORITY_CHANGED", "Priority of " + id + " " + priorityNote);
+            }
+            if (dto.getAssignedTechnicianId() != null)
+                publish(id, "INCIDENT_EDITED", s.userName(actor.userId()) + " edited " + id + ": " + details);
+            return detail(actor, id);
+        });
+    }
+
+    /** IT manager: searches the audit trail of every incident (who did what, when). Newest first, at most 500 rows. */
+    public List<AuditSearchView> searchAudit(Actor actor, Map<String, String> filters) {
+        actor.require(Actor.ADMIN, "search the audit log");
+        String from = filters.get("from"), to = filters.get("to");
+        Instant fromAt = from == null || from.isBlank() ? null : date(from).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        Instant toAt = to == null || to.isBlank() ? null : date(to).plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        Long userId = null;
+        String user = filters.get("userId");
+        if (user != null && !user.isBlank()) {
+            try { userId = Long.parseLong(user.trim()); } catch (NumberFormatException e) { throw new IllegalArgumentException("userId must be a number."); }
+        }
+        int limit = 200;
+        String limitText = filters.get("limit");
+        if (limitText != null && !limitText.isBlank()) {
+            try { limit = Math.max(1, Math.min(500, Integer.parseInt(limitText.trim()))); } catch (NumberFormatException e) { throw new IllegalArgumentException("limit must be a number."); }
+        }
+        return queries.searchAudit(blankToNull(filters.get("q")), blankToNull(filters.get("action")), blankToNull(filters.get("incidentId")),
+                userId, fromAt, toAt, limit).stream()
+                .map(r -> new AuditSearchView(r.id(), r.incidentId(), r.at(), r.actorId(), r.actorName(), r.action(), r.fromStatus(), r.toStatus(), r.description()))
+                .toList();
+    }
+
+    private static String blankToNull(String text) { return text == null || text.isBlank() ? null : text.trim(); }
+
+    public synchronized IncidentView changePriority(Actor actor, String id, String priorityText, String reason) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "change priority");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            com.irctc.itsm.model.Priority dbPriority;
+            try { dbPriority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").trim().toUpperCase(Locale.ROOT)); }
+            catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
+            if (dto.getPriority() == dbPriority) throw new IllegalArgumentException("The incident is already " + dbPriority + ".");
+            String why = text(reason, "reason", 5, 500);
+            com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
+                    .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
+            Priority newPriority = Mapping.priority(dbPriority);
+            SLAPolicy policy = new SLAPolicy(newPriority, Duration.ofMinutes(configured.getResponseTargetMins()), Duration.ofMinutes(configured.getResolutionTargetMins()));
+            Incident incident = s.restore(dto);
+            String old = dto.getPriority() == null ? "none" : dto.getPriority().name();
+            incident.changePriority(newPriority, policy, s.administrator(actor.userId()), why, clock.instant());   // domain checks state and reason
+
+            Instant created = Mapping.instant(dto.getCreatedAt());
+            dto.setPriority(dbPriority);
+            dto.setSlaId(configured.getSlaId());
+            dto.setSlaResponseDeadline(Mapping.local(created.plus(policy.responseTarget())));
+            dto.setSlaResolutionDeadline(Mapping.local(created.plus(policy.resolutionTarget())));
+            incidents.save(dto);
+            audit.save(new AuditLog(id, actor.userId(), "PRIORITY_CHANGED", dto.getStatus().name(), dto.getStatus().name(), old + " -> " + dbPriority + ": " + why));
+            publish(id, "PRIORITY_CHANGED", "Priority of " + id + " changed from " + old + " to " + dbPriority + " by " + s.userName(actor.userId()) + ": " + why);
+            return detail(actor, id);
+        });
     }
 
     /**
@@ -377,18 +474,20 @@ public class IncidentWorkflowService {
      * while nobody is assigned). Unlike internal notes, messages are visible to the reporter.
      */
     public synchronized IncidentView sendMessage(Actor actor, String id, String message) {
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("This incident is closed. Report a new problem if you still need help.");
-        if (!canMessage(actor, dto)) throw new SecurityException("Only the reporter and the IT staff handling this incident can send messages.");
-        String body = text(message, "message", 1, 2000);
-        audit.save(new AuditLog(id, actor.userId(), "MESSAGE", dto.getStatus().name(), dto.getStatus().name(), body));
-        String sender = s.userName(actor.userId());
-        if (Objects.equals(dto.getReporterId(), actor.userId()))
-            publish(id, dto.getAssignedTechnicianId() == null ? "MESSAGE_UNASSIGNED" : "MESSAGE_FROM_REPORTER", sender + " wrote on " + id + ": " + body);
-        else
-            publish(id, "MESSAGE_TO_REPORTER", sender + " from the IT team wrote on " + id + ": " + body);
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("This incident is closed. Report a new problem if you still need help.");
+            if (!canMessage(actor, dto)) throw new SecurityException("Only the reporter and the IT staff handling this incident can send messages.");
+            String body = text(message, "message", 1, 2000);
+            audit.save(new AuditLog(id, actor.userId(), "MESSAGE", dto.getStatus().name(), dto.getStatus().name(), body));
+            String sender = s.userName(actor.userId());
+            if (Objects.equals(dto.getReporterId(), actor.userId()))
+                publish(id, dto.getAssignedTechnicianId() == null ? "MESSAGE_UNASSIGNED" : "MESSAGE_FROM_REPORTER", sender + " wrote on " + id + ": " + body);
+            else
+                publish(id, "MESSAGE_TO_REPORTER", sender + " from the IT team wrote on " + id + ": " + body);
+            return detail(actor, id);
+        });
     }
 
     private static boolean canMessage(Actor actor, com.irctc.itsm.model.Incident dto) {
@@ -398,26 +497,30 @@ public class IncidentWorkflowService {
     }
 
     public synchronized IncidentView addNote(Actor actor, String id, String note) {
-        if (actor.isCustomer()) throw new SecurityException("Use Messages to talk to the IT team.");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("Closed incidents cannot take new notes.");
-        String body = text(note, "note", 2, 2000);
-        audit.save(new AuditLog(id, actor.userId(), "NOTE", dto.getStatus().name(), dto.getStatus().name(), body));
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            if (actor.isCustomer()) throw new SecurityException("Use Messages to talk to the IT team.");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            if (dto.getStatus() == com.irctc.itsm.model.IncidentStatus.CLOSED) throw new IllegalStateException("Closed incidents cannot take new notes.");
+            String body = text(note, "note", 2, 2000);
+            audit.save(new AuditLog(id, actor.userId(), "NOTE", dto.getStatus().name(), dto.getStatus().name(), body));
+            return detail(actor, id);
+        });
     }
 
     public synchronized IncidentView feedback(Actor actor, String id, Integer rating) {
-        actor.requireReporter("rate resolutions");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
-        if (!FINISHED.contains(dto.getStatus().name())) throw new IllegalStateException("Feedback is possible once the incident is resolved.");
-        int stars = range(rating, "rating", 1, 5);
-        Resolution resolution = resolutions.findByIncidentId(id).orElseThrow(() -> new IllegalStateException("This incident has no resolution to rate."));
-        if (resolution.getUserFeedback() != null) throw new IllegalStateException("Feedback was already given for this incident.");
-        resolutions.submitFeedback(id, stars);
-        audit.save(new AuditLog(id, actor.userId(), "FEEDBACK", dto.getStatus().name(), dto.getStatus().name(), "Reporter rated the resolution " + stars + "/5"));
-        return detail(actor, id);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.requireReporter("rate resolutions");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            if (!FINISHED.contains(dto.getStatus().name())) throw new IllegalStateException("Feedback is possible once the incident is resolved.");
+            int stars = range(rating, "rating", 1, 5);
+            Resolution resolution = resolutions.findByIncidentId(id).orElseThrow(() -> new IllegalStateException("This incident has no resolution to rate."));
+            if (resolution.getUserFeedback() != null) throw new IllegalStateException("Feedback was already given for this incident.");
+            resolutions.submitFeedback(id, stars);
+            audit.save(new AuditLog(id, actor.userId(), "FEEDBACK", dto.getStatus().name(), dto.getStatus().name(), "Reporter rated the resolution " + stars + "/5"));
+            return detail(actor, id);
+        });
     }
 
     /**
@@ -425,36 +528,38 @@ public class IncidentWorkflowService {
      * resolution deadline, and escalates P1/P2 incidents nobody acknowledged in time. Each event fires once.
      */
     public synchronized int checkSla() {
-        Snapshot s = snapshot();
-        Instant now = clock.instant();
-        int fired = 0;
-        for (com.irctc.itsm.model.Incident dto : s.incidents()) {
-            String status = dto.getStatus().name();
-            if (FINISHED.contains(status) || dto.getPriority() == null) continue;
-            String id = dto.getIncidentId();
-            SLAResult r = SLAEvaluator.evaluate(s.restore(dto), now);
-            Set<String> done = audit.findByIncidentId(id).stream().map(AuditLog::getAction).collect(Collectors.toSet());
-            if ((r.responseViolated() || r.resolutionViolated()) && !dto.isSlaViolated()) {
-                String which = r.responseViolated() ? "response" : "resolution";
-                queries.setSlaViolated(id);
-                audit.save(new AuditLog(id, null, "SLA_VIOLATED", status, status, "Missed the " + which + " target"));
-                publish(id, "SLA_VIOLATED", id + " missed its " + which + " target (" + dto.getPriority() + ")");
-                fired++;
+        return DatabaseConnection.inTransaction(() -> {
+            Snapshot s = snapshot();
+            Instant now = clock.instant();
+            int fired = 0;
+            for (com.irctc.itsm.model.Incident dto : s.incidents()) {
+                String status = dto.getStatus().name();
+                if (FINISHED.contains(status) || dto.getPriority() == null) continue;
+                String id = dto.getIncidentId();
+                SLAResult r = SLAEvaluator.evaluate(s.restore(dto), now);
+                Set<String> done = audit.findByIncidentId(id).stream().map(AuditLog::getAction).collect(Collectors.toSet());
+                if ((r.responseViolated() || r.resolutionViolated()) && !dto.isSlaViolated()) {
+                    String which = r.responseViolated() ? "response" : "resolution";
+                    queries.setSlaViolated(id);
+                    audit.save(new AuditLog(id, null, "SLA_VIOLATED", status, status, "Missed the " + which + " target"));
+                    publish(id, "SLA_VIOLATED", id + " missed its " + which + " target (" + dto.getPriority() + ")");
+                    fired++;
+                }
+                boolean urgent = dto.getPriority() == com.irctc.itsm.model.Priority.P1 || dto.getPriority() == com.irctc.itsm.model.Priority.P2;
+                boolean unacknowledged = status.equals("CLASSIFIED") || status.equals("ASSIGNED");
+                if (urgent && unacknowledged && r.responseViolated() && !done.contains("ESCALATED")) {
+                    audit.save(new AuditLog(id, null, "ESCALATED", status, status, "Not acknowledged within the response target; escalated to the IT manager"));
+                    publish(id, "ESCALATED", dto.getPriority() + " incident " + id + " was not acknowledged in time and has been escalated");
+                    fired++;
+                }
+                if (r.resolutionAtRisk() && !done.contains("SLA_WARNING")) {
+                    audit.save(new AuditLog(id, null, "SLA_WARNING", status, status, "Resolution deadline is less than 5 minutes away"));
+                    publish(id, "SLA_WARNING", id + " will miss its resolution target in under 5 minutes");
+                    fired++;
+                }
             }
-            boolean urgent = dto.getPriority() == com.irctc.itsm.model.Priority.P1 || dto.getPriority() == com.irctc.itsm.model.Priority.P2;
-            boolean unacknowledged = status.equals("CLASSIFIED") || status.equals("ASSIGNED");
-            if (urgent && unacknowledged && r.responseViolated() && !done.contains("ESCALATED")) {
-                audit.save(new AuditLog(id, null, "ESCALATED", status, status, "Not acknowledged within the response target; escalated to the IT manager"));
-                publish(id, "ESCALATED", dto.getPriority() + " incident " + id + " was not acknowledged in time and has been escalated");
-                fired++;
-            }
-            if (r.resolutionAtRisk() && !done.contains("SLA_WARNING")) {
-                audit.save(new AuditLog(id, null, "SLA_WARNING", status, status, "Resolution deadline is less than 5 minutes away"));
-                publish(id, "SLA_WARNING", id + " will miss its resolution target in under 5 minutes");
-                fired++;
-            }
-        }
-        return fired;
+            return fired;
+        });
     }
 
     // =====================================================================================
@@ -466,22 +571,28 @@ public class IncidentWorkflowService {
         return services();
     }
 
-    public synchronized ServiceView createService(Actor actor, String name, String category, String criticality) {
-        actor.require(Actor.ADMIN, "manage services");
-        ITService svc = catalogue.saveService(new ITService(null, serviceName(name),
-                Mapping.category(Objects.requireNonNullElse(category, "")).name(), severity(criticality)));
-        System.out.println("[ADMIN] user " + actor.userId() + " added service " + svc.getServiceName());
-        return serviceView(svc);
+    public synchronized ServiceView createService(Actor actor, String name, String category, String criticality, Boolean tatkalBookingPath) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage services");
+            ITService svc = catalogue.saveService(new ITService(null, serviceName(name),
+                    snapshot().category(Objects.requireNonNullElse(category, "")).code(), severity(criticality)));
+            queries.setTatkalPath(svc.getServiceId(), Boolean.TRUE.equals(tatkalBookingPath));
+            System.out.println("[ADMIN] user " + actor.userId() + " added service " + svc.getServiceName());
+            return serviceView(svc, queries.tatkalServiceIds());
+        });
     }
 
-    public synchronized ServiceView updateService(Actor actor, long serviceId, String name, String category, String criticality) {
-        actor.require(Actor.ADMIN, "manage services");
-        ITService current = catalogue.findServiceById(serviceId).orElseThrow(() -> new NotFoundException("Service " + serviceId + " was not found."));
-        String newName = name == null ? current.getServiceName() : serviceName(name);
-        String newCategory = category == null ? current.getCategory() : Mapping.category(category).name();
-        String newCriticality = criticality == null ? current.getBusinessCriticality().name() : severity(criticality).name();
-        queries.updateService(serviceId, newName, newCategory, newCriticality);
-        return serviceView(catalogue.findServiceById(serviceId).orElseThrow());
+    public synchronized ServiceView updateService(Actor actor, long serviceId, String name, String category, String criticality, Boolean tatkalBookingPath) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage services");
+            ITService current = catalogue.findServiceById(serviceId).orElseThrow(() -> new NotFoundException("Service " + serviceId + " was not found."));
+            String newName = name == null ? current.getServiceName() : serviceName(name);
+            String newCategory = category == null ? current.getCategory() : snapshot().category(category).code();
+            String newCriticality = criticality == null ? current.getBusinessCriticality().name() : severity(criticality).name();
+            queries.updateService(serviceId, newName, newCategory, newCriticality);
+            if (tatkalBookingPath != null) queries.setTatkalPath(serviceId, tatkalBookingPath);
+            return serviceView(catalogue.findServiceById(serviceId).orElseThrow(), queries.tatkalServiceIds());
+        });
     }
 
     public List<SlaPolicyView> slaPolicies(Actor actor) {
@@ -493,32 +604,56 @@ public class IncidentWorkflowService {
 
     /** Applies to incidents reported from now on; existing incidents keep the deadlines they were given. */
     public synchronized SlaPolicyView updateSlaPolicy(Actor actor, String priorityText, Integer responseMinutes, Integer resolutionMinutes) {
-        actor.require(Actor.ADMIN, "manage SLA policies");
-        com.irctc.itsm.model.Priority priority;
-        try { priority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").toUpperCase(Locale.ROOT)); }
-        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
-        int response = range(responseMinutes, "response target (minutes)", 1, 10_080);
-        int resolution = range(resolutionMinutes, "resolution target (minutes)", 1, 43_200);
-        if (resolution <= response) throw new IllegalArgumentException("The resolution target must be longer than the response target.");
-        catalogue.saveOrUpdateSlaPolicy(new com.irctc.itsm.model.SLAPolicy(null, priority, response, resolution));
-        System.out.println("[ADMIN] user " + actor.userId() + " set " + priority + " SLA to " + response + "/" + resolution + " min");
-        return new SlaPolicyView(priority.name(), response, resolution);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage SLA policies");
+            com.irctc.itsm.model.Priority priority;
+            try { priority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").toUpperCase(Locale.ROOT)); }
+            catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
+            int response = range(responseMinutes, "response target (minutes)", 1, 10_080);
+            int resolution = range(resolutionMinutes, "resolution target (minutes)", 1, 43_200);
+            if (resolution <= response) throw new IllegalArgumentException("The resolution target must be longer than the response target.");
+            catalogue.saveOrUpdateSlaPolicy(new com.irctc.itsm.model.SLAPolicy(null, priority, response, resolution));
+            System.out.println("[ADMIN] user " + actor.userId() + " set " + priority + " SLA to " + response + "/" + resolution + " min");
+            return new SlaPolicyView(priority.name(), response, resolution);
+        });
     }
 
     public List<CategoryView> adminCategories(Actor actor) {
         actor.require(Actor.ADMIN, "manage categories");
-        return queries.categories().stream().map(c -> new CategoryView(c.code(), c.label(), c.active())).toList();
+        return queries.categories().stream().map(IncidentWorkflowService::categoryView).toList();
     }
 
-    public synchronized CategoryView updateCategory(Actor actor, String code, String label, Boolean active) {
-        actor.require(Actor.ADMIN, "manage categories");
-        String key = Mapping.category(Objects.requireNonNullElse(code, "")).name();
-        String newLabel = label == null ? null : text(label, "label", 2, 60);
-        if (Boolean.FALSE.equals(active) && queries.categories().stream().filter(IntegrationQueries.CategoryRow::active).count() <= 1)
-            throw new IllegalStateException("At least one category must stay available.");
-        if (!queries.updateCategory(key, newLabel, active)) throw new NotFoundException("Category " + key + " was not found.");
-        return queries.categories().stream().filter(c -> c.code().equals(key)).findFirst()
-                .map(c -> new CategoryView(c.code(), c.label(), c.active())).orElseThrow();
+    /**
+     * The IT manager adds a category and chooses the technician team that handles it. The domain
+     * validates it; skill-based assignment then routes it with no code change.
+     */
+    public synchronized CategoryView createCategory(Actor actor, String label, String team) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage categories");
+            String name = text(label, "category name", 2, 60);
+            if (team == null || team.isBlank()) throw new IllegalArgumentException("Choose the team that handles this category.");
+            IncidentCategory category = IncidentCategory.of(IncidentCategory.codeFor(name), name, Mapping.skill(team));
+            if (queries.categories().stream().anyMatch(c -> c.label().equalsIgnoreCase(name)))
+                throw new IllegalStateException("A category called " + name + " already exists.");
+            if (!queries.createCategory(category.code(), category.label(), Mapping.skillCode(category.handledBy())))
+                throw new IllegalStateException("A category with the code " + category.code() + " already exists.");
+            System.out.println("[ADMIN] user " + actor.userId() + " added category " + category.code() + " for team " + category.handledBy());
+            return queries.categories().stream().filter(c -> c.code().equals(category.code())).findFirst().map(IncidentWorkflowService::categoryView).orElseThrow();
+        });
+    }
+
+    public synchronized CategoryView updateCategory(Actor actor, String code, String label, Boolean active, String team) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage categories");
+            String key = snapshot().category(Objects.requireNonNullElse(code, "")).code();
+            String newLabel = label == null ? null : text(label, "label", 2, 60);
+            String newTeam = team == null ? null : Mapping.skillCode(Mapping.skill(team));
+            if (Boolean.FALSE.equals(active) && queries.categories().stream().filter(IntegrationQueries.CategoryRow::active).count() <= 1)
+                throw new IllegalStateException("At least one category must stay available.");
+            if (!queries.updateCategory(key, newLabel, active, newTeam)) throw new NotFoundException("Category " + key + " was not found.");
+            return queries.categories().stream().filter(c -> c.code().equals(key)).findFirst()
+                    .map(IncidentWorkflowService::categoryView).orElseThrow();
+        });
     }
 
     public SettingsView settings(Actor actor) {
@@ -527,26 +662,29 @@ public class IncidentWorkflowService {
     }
 
     public synchronized SettingsView updateSettings(Actor actor, String defaultAssignmentStrategy) {
-        actor.require(Actor.ADMIN, "manage settings");
-        String key = Objects.requireNonNullElse(defaultAssignmentStrategy, "").trim().toLowerCase(Locale.ROOT);
-        if (!assignmentStrategies.containsKey(key)) throw new IllegalArgumentException("Choose one of " + assignmentStrategies() + ".");
-        queries.setSetting("default_assignment_strategy", key);
-        return settings(actor);
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage settings");
+            String key = Objects.requireNonNullElse(defaultAssignmentStrategy, "").trim().toLowerCase(Locale.ROOT);
+            if (!assignmentStrategies.containsKey(key)) throw new IllegalArgumentException("Choose one of " + assignmentStrategies() + ".");
+            queries.setSetting("default_assignment_strategy", key);
+            return settings(actor);
+        });
     }
 
     /** Creates or updates a technician's skill, experience and availability; current workload is kept. */
     public synchronized TechnicianView saveTechnicianProfile(Actor actor, long userId, String skill, Integer experienceYears, Boolean available) {
-        actor.require(Actor.ADMIN, "manage technicians");
-        Snapshot s = snapshot();
-        com.irctc.itsm.model.User user = s.user(userId).orElseThrow(() -> new NotFoundException("User " + userId + " was not found."));
-        if (user.getRole() != com.irctc.itsm.model.Role.TECHNICIAN) throw new IllegalArgumentException(user.getFullName() + " is not a technician.");
-        TechnicianDetail current = s.technicianDetails().get(userId);
-        String skillCode = skill == null && current != null ? current.getSkillCategory() : Mapping.category(Objects.requireNonNullElse(skill, "")).name();
-        Mapping.skill(skillCode);
-        int years = experienceYears == null ? (current == null ? 1 : current.getExperienceYears()) : range(experienceYears, "experience (years)", 0, 50);
-        boolean isAvailable = available == null ? current == null || current.isAvailable() : available;
-        users.saveTechnicianDetail(new TechnicianDetail(userId, skillCode, current == null ? 0 : current.getCurrentWorkload(), years, isAvailable));
-        return technicianViews(snapshot()).stream().filter(t -> t.id() == userId).findFirst().orElseThrow();
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.ADMIN, "manage technicians");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.User user = s.user(userId).orElseThrow(() -> new NotFoundException("User " + userId + " was not found."));
+            if (user.getRole() != com.irctc.itsm.model.Role.TECHNICIAN) throw new IllegalArgumentException(user.getFullName() + " is not a technician.");
+            TechnicianDetail current = s.technicianDetails().get(userId);
+            String skillCode = skill == null && current != null ? current.getSkillCategory() : Mapping.skillCode(Mapping.skill(skill));
+            int years = experienceYears == null ? (current == null ? 1 : current.getExperienceYears()) : range(experienceYears, "experience (years)", 0, 50);
+            boolean isAvailable = available == null ? current == null || current.isAvailable() : available;
+            users.saveTechnicianDetail(new TechnicianDetail(userId, skillCode, current == null ? 0 : current.getCurrentWorkload(), years, isAvailable));
+            return technicianViews(snapshot()).stream().filter(t -> t.id() == userId).findFirst().orElseThrow();
+        });
     }
 
     // =====================================================================================
@@ -659,7 +797,7 @@ public class IncidentWorkflowService {
 
     /** History entries a customer may see. Internal triage (priority, assessment, duplicates, notes, SLA) is left out. */
     private static final Set<String> CUSTOMER_VISIBLE = Set.of("INCIDENT_CREATED", "TECHNICIAN_ASSIGNED", "STATUS_CHANGED",
-            "INCIDENT_RESOLVED", "INFO_REQUESTED", "INFO_PROVIDED", "MESSAGE", "FEEDBACK");
+            "INCIDENT_RESOLVED", "INFO_REQUESTED", "INFO_PROVIDED", "MESSAGE", "FEEDBACK", "INCIDENT_EDITED");
 
     private static List<HistoryView> customerHistory(List<HistoryView> history, Snapshot s) {
         return history.stream().filter(h -> CUSTOMER_VISIBLE.contains(h.action()))
@@ -674,7 +812,7 @@ public class IncidentWorkflowService {
         List<String> actions = new ArrayList<>();
         if (actor.isAdmin()) {
             if (status.equals("CLASSIFIED")) actions.add("ASSIGN");
-            if (Set.of("CLASSIFIED", "ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS").contains(status)) actions.add("CHANGE_PRIORITY");
+            if (Set.of("CLASSIFIED", "ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS").contains(status)) { actions.add("CHANGE_PRIORITY"); actions.add("EDIT"); }
             if (status.equals("VERIFIED")) actions.add("CLOSE");
         }
         if (actor.isTechnician() && Objects.equals(dto.getAssignedTechnicianId(), actor.userId())) {
@@ -688,6 +826,7 @@ public class IncidentWorkflowService {
         }
         if (actor.isReporter() && Objects.equals(dto.getReporterId(), actor.userId())) {
             if (waiting) actions.add("PROVIDE_INFO");
+            if (Set.of("NEW", "CLASSIFIED", "ASSIGNED").contains(status)) actions.add("EDIT");
             if (status.equals("RESOLVED")) actions.add("VERIFY");
             if (FINISHED.contains(status) && resolution != null && resolution.feedback() == null) actions.add("FEEDBACK");
         }
@@ -709,9 +848,9 @@ public class IncidentWorkflowService {
         return list;
     }
 
-    private ServiceView serviceView(ITService svc) {
+    private ServiceView serviceView(ITService svc, Set<Long> tatkalServices) {
         return new ServiceView(svc.getServiceId(), svc.getServiceName(), svc.getCategory(), svc.getBusinessCriticality().name(),
-                Mapping.criticality(svc.getBusinessCriticality()));
+                Mapping.criticality(svc.getBusinessCriticality()), tatkalServices.contains(svc.getServiceId()));
     }
 
     private static long userIdOf(Snapshot s, Technician technician) {

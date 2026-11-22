@@ -69,22 +69,32 @@ public final class Mapping {
         };
     }
 
-    public static IncidentCategory category(String text) {
-        try {
-            return IncidentCategory.valueOf(text.trim().toUpperCase(Locale.ROOT));
-        } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Unknown incident category: " + text);
-        }
+    /** A stored category row as the domain value, with the team that handles it. */
+    public static IncidentCategory category(String code, String label, String skill) {
+        return IncidentCategory.of(code, label, skill(skill));
+    }
+
+    /** How a team (skill) is stored: the code of its standard category, e.g. PAYMENTS is stored as PAYMENT. */
+    public static String skillCode(Skill skill) {
+        return switch (skill) {
+            case PAYMENTS -> "PAYMENT";
+            case API -> "API_INTEGRATION";
+            default -> skill.name();
+        };
     }
 
     /** Technician skill text from the database; PAYMENT and API are stored without the domain suffix. */
     public static Skill skill(String text) {
         String key = text == null ? "" : text.trim().toUpperCase(Locale.ROOT);
-        return switch (key) {
-            case "PAYMENT" -> Skill.PAYMENTS;
-            case "API_INTEGRATION" -> Skill.API;
-            default -> Skill.valueOf(key);
-        };
+        try {
+            return switch (key) {
+                case "PAYMENT" -> Skill.PAYMENTS;
+                case "API_INTEGRATION" -> Skill.API;
+                default -> Skill.valueOf(key);
+            };
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Unknown technician team: " + text);
+        }
     }
 
     public static Instant instant(LocalDateTime local) {
