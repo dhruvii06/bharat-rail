@@ -47,6 +47,7 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/incidents/:id/info-response` | Employee (reporter) | `{answer}`; clears the open question |
 | GET | `/services`, `/categories` | all | Service catalogue (with criticality) and categories |
 | GET | `/assignment-strategies`, `/technicians` | Manager | Strategy names; technicians with skill and workload |
+| GET | `/technicians/me` | Technician | Own workload: `{id, name, email, skill, workload, capacity, experienceYears, available}` |
 | GET | `/notifications` | all | In-app channel: `{items, unread}` |
 | POST | `/notifications/:id/read`, `/notifications/read-all` | all | Mark read → 204 |
 | GET | `/notifications/outbox` | Manager | Simulated email channel |

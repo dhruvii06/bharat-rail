@@ -79,6 +79,9 @@ public final class DomainModelChecks {
             Impact.LOW,Urgency.LOW,10,false,false,START);
         IncidentManagementService svc=new IncidentManagementService(repo,priority,new LoadBasedAssignmentStrategy(),events);
         check(svc.findPotentialDuplicates(similar).size()==1,"duplicate candidate detection");
+        Incident loadedSeparately=new Incident("Payment timeout again","Payment backend",EMP,SERVICE,
+            IncidentCategory.of("PAYMENT","Payment",Skill.PAYMENTS),Impact.LOW,Urgency.LOW,10,false,false,START);
+        check(svc.findPotentialDuplicates(loadedSeparately).size()==1,"duplicate detection compares categories by value, not by object");
         check(inc.getAuditTrail().stream().allMatch(e->e.actorId()!=null),"audit attributes actor");
         throwsException(IllegalArgumentException.class,()->new RailwayService("Bad",4),"invalid criticality rejected");
         UUID savedId=UUID.randomUUID();
@@ -113,7 +116,7 @@ public final class DomainModelChecks {
             "another employee cannot edit");
         throwsException(IllegalArgumentException.class,()->editable.edit(EMP,"UPI payment failure",null,null,START.plusSeconds(6)),"an edit must change something");
         editable.edit(ADMIN,null,null,IncidentCategory.SECURITY,START.plusSeconds(7));
-        check(editable.getCategory()==IncidentCategory.SECURITY && editable.isCriticalSecurityIncident() && new RailwayPriorityStrategy().calculate(editable)==Priority.P1_CRITICAL,
+        check(editable.getCategory().equals(IncidentCategory.SECURITY) && editable.isCriticalSecurityIncident() && new RailwayPriorityStrategy().calculate(editable)==Priority.P1_CRITICAL,
             "IT manager recategorises to security; the security rule now gives P1");
         Incident ask=incident(Impact.HIGH,Urgency.HIGH,false,false);
         ask.classify(priority.calculate(ask),ADMIN,START);

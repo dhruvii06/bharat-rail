@@ -39,6 +39,7 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('get', '/categories', ALL);
   route('get', '/assignment-strategies', ['Manager']);
   route('get', '/technicians', ['Manager']);
+  route('get', '/technicians/me', ['Technician']);              // own workload: active incidents, capacity, availability
 
   route('get', '/notifications', ALL);
   route('get', '/notifications/outbox', ['Manager']);           // simulated email channel
