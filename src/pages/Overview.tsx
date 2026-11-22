@@ -16,8 +16,8 @@ export function Overview({ user }: { user: User }) {
   const items = technician ? all.filter(i => String(i.assigneeId) === String(user.id)) : all;
   const active = items.filter(i => !finished.includes(i.status));
 
-  const metrics: [string, string | number][] = manager && report.data
-    ? [['Total incidents', report.data.total], ['Open incidents', report.data.open], ['Critical (P1) open', report.data.critical], ['SLA violations', report.data.slaViolations]]
+  const metrics: [string, string | number][] = manager
+    ? [['Total incidents', report.data?.total ?? '—'], ['Open incidents', report.data?.open ?? '—'], ['Critical (P1) open', report.data?.critical ?? '—'], ['SLA violations', report.data?.slaViolations ?? '—']]
     : user.role === 'Customer'
     ? [['My reports', items.length], ['Open', items.filter(i => !finished.includes(i.status)).length],
        ['Waiting for my answer', items.filter(i => i.informationRequest).length], ['Resolved', items.filter(i => finished.includes(i.status)).length]]
