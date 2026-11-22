@@ -67,7 +67,7 @@ function Users() {
       <label>Email<input id="new-email" type="email" required value={form.email} onChange={e => set('email', e.target.value)} /></label>
       <label>Temporary password<input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={form.password} onChange={e => set('password', e.target.value)} /></label>
       <label>Role<select id="new-role" value={form.role} onChange={e => set('role', e.target.value as Role)}>
-        <option value="Employee">Employee</option><option value="Technician">Technician</option><option value="Manager">IT Manager</option><option value="Passenger">Passenger</option>
+        <option value="Employee">Employee</option><option value="Technician">Technician</option><option value="Manager">IT Manager</option><option value="Customer">Customer</option>
       </select></label>
       <label>Department<input id="new-department" value={form.department} onChange={e => set('department', e.target.value)} /></label>
       {form.role === 'Technician' && <>

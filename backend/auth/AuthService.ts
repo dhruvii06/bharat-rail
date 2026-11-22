@@ -47,12 +47,12 @@ export class AuthService {
   }
 
   /**
-   * Self-registration is for members of the public, who become Passengers. Employee, technician and
+   * Self-registration is for members of the public, who become Customers. Employee, technician and
    * manager accounts are created by the IT manager (routes/adminUsers.ts).
    */
   async register(input: { name: string; email: string; password: string }): Promise<PublicUser> {
     const user = await this.users.create({
-      name: input.name, email: input.email, role: 'Passenger', department: 'Public',
+      name: input.name, email: input.email, role: 'Customer', department: 'Customer',
       passwordHash: await hashPassword(input.password), isTeamLead: false, active: true
     });
     return toPublicUser(user);

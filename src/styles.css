@@ -112,3 +112,6 @@ td .inline-input{display:inline-block;width:auto}
 @media(max-width:700px){.impact-controls{grid-template-columns:1fr}.impact-graph{display:flex;flex-direction:column;gap:8px}.impact-graph-col{width:100%}.impact-graph-arrow{padding:0 0 0 10px;transform:rotate(90deg)}.impact-node{min-height:0}.impact-demo-pill{font-size:9px}}
 .who-link{color:#a9b6c6;text-decoration:underline}
 .who-link:hover{color:white}
+.choice-group{border:1px solid var(--line);background:white;padding:12px 16px;display:grid;gap:8px;margin:0}
+.choice-group legend{font-size:12px;font-weight:500;padding:0 4px}
+.choice-group .checkbox span small{display:block;color:#647182;font-weight:400}

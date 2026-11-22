@@ -2,7 +2,7 @@ package com.railway.itsm.domain.model;
 import java.util.UUID;
 /**
  * A user who can report incidents and confirm their resolution: staff (Employee) or a member of the
- * public (Passenger). Technicians and administrators work on incidents but do not report them.
+ * public (Customer). Technicians and administrators work on incidents but do not report them.
  */
 public abstract class Reporter extends User {
     protected Reporter(String name,String email){super(name,email);}

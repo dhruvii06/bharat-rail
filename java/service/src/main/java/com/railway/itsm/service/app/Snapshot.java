@@ -13,7 +13,7 @@ import com.railway.itsm.domain.model.SLAPolicy;
 import java.time.Duration;
 import com.railway.itsm.domain.model.Administrator;
 import com.railway.itsm.domain.model.Employee;
-import com.railway.itsm.domain.model.Passenger;
+import com.railway.itsm.domain.model.Customer;
 import com.railway.itsm.domain.model.Reporter;
 import com.railway.itsm.domain.model.Incident;
 import com.railway.itsm.domain.model.RailwayService;
@@ -87,10 +87,10 @@ public final class Snapshot {
 
     // ---- domain object factories ----
 
-    /** The reporting user as the right domain type: a Passenger for public accounts, otherwise an Employee. */
+    /** The reporting user as the right domain type: a Customer for public accounts, otherwise an Employee. */
     public Reporter reporter(long id) {
         com.irctc.itsm.model.User u = require(id);
-        return u.getRole() == Role.PASSENGER ? new Passenger(Ids.user(id), u.getFullName(), u.getEmail())
+        return u.getRole() == Role.CUSTOMER ? new Customer(Ids.user(id), u.getFullName(), u.getEmail())
                 : new Employee(Ids.user(id), u.getFullName(), u.getEmail());
     }
 

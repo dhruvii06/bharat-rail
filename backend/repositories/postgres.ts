@@ -6,8 +6,8 @@ import type { NewUser, UserDirectory, UserPatch, UserRecord, UserRepository } fr
 // Users live in the shared PostgreSQL `users` table (schema in java/persistence), so the Node API
 // and the Java incident service agree on who everyone is. Database roles map to the app's roles.
 
-const toRole: Record<string, Role> = { EMPLOYEE: 'Employee', TECHNICIAN: 'Technician', ADMIN: 'Manager', PASSENGER: 'Passenger' };
-const fromRole: Record<Role, string> = { Employee: 'EMPLOYEE', Technician: 'TECHNICIAN', Manager: 'ADMIN', Passenger: 'PASSENGER' };
+const toRole: Record<string, Role> = { EMPLOYEE: 'Employee', TECHNICIAN: 'Technician', ADMIN: 'Manager', CUSTOMER: 'Customer' };
+const fromRole: Record<Role, string> = { Employee: 'EMPLOYEE', Technician: 'TECHNICIAN', Manager: 'ADMIN', Customer: 'CUSTOMER' };
 
 interface UserRow { user_id: number; full_name: string; email: string; password_hash: string; role: string; department: string | null; active: boolean; must_change_password: boolean }
 const COLUMNS = 'user_id, full_name, email, password_hash, role, department, active, must_change_password';

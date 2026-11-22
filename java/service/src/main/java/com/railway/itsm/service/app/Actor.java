@@ -5,19 +5,20 @@ public record Actor(long userId, String role) {
     public static final String EMPLOYEE = "EMPLOYEE";
     public static final String TECHNICIAN = "TECHNICIAN";
     public static final String ADMIN = "ADMIN";
-    public static final String PASSENGER = "PASSENGER";
+    public static final String CUSTOMER = "CUSTOMER";
 
     public Actor {
-        if (!EMPLOYEE.equals(role) && !TECHNICIAN.equals(role) && !ADMIN.equals(role) && !PASSENGER.equals(role))
+        if (!EMPLOYEE.equals(role) && !TECHNICIAN.equals(role) && !ADMIN.equals(role) && !CUSTOMER.equals(role))
             throw new SecurityException("Unknown role " + role);
     }
 
     public boolean isEmployee() { return EMPLOYEE.equals(role); }
-    /** Employees and passengers report incidents, follow their own, answer questions and verify fixes. */
-    public boolean isReporter() { return EMPLOYEE.equals(role) || PASSENGER.equals(role); }
+    public boolean isCustomer() { return CUSTOMER.equals(role); }
+    /** Employees and customers report incidents, follow their own, answer questions and verify fixes. */
+    public boolean isReporter() { return EMPLOYEE.equals(role) || CUSTOMER.equals(role); }
 
     public void requireReporter(String action) {
-        if (!isReporter()) throw new SecurityException("Only employees and passengers can " + action + ".");
+        if (!isReporter()) throw new SecurityException("Only employees and customers can " + action + ".");
     }
     public boolean isTechnician() { return TECHNICIAN.equals(role); }
     public boolean isAdmin() { return ADMIN.equals(role); }

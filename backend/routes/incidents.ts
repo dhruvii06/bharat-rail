@@ -6,8 +6,8 @@ import type { IncidentServiceClient } from '../http/incidentService.ts';
 // Incident endpoints. Node checks the role first (cheap, clear 403s); the Java service then applies
 // the domain rules (lifecycle, ownership, capacity) and stores the result. See docs/API.md.
 
-const ALL: Role[] = ['Employee', 'Technician', 'Manager', 'Passenger'];
-const REPORTERS: Role[] = ['Employee', 'Passenger'];
+const ALL: Role[] = ['Employee', 'Technician', 'Manager', 'Customer'];
+const REPORTERS: Role[] = ['Employee', 'Customer'];
 
 export function incidentRoutes(service: IncidentServiceClient): Router {
   const r = Router();

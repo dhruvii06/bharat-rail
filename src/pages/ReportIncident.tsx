@@ -1,13 +1,67 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { calculatePriority, type IncidentInput } from '../../shared/domain';
-import { useLoad } from '../auth';
+import { calculatePriority, type CustomerEffect, type CustomerIncidentInput, type IncidentInput } from '../../shared/domain';
+import { useAuth, useLoad } from '../auth';
 import { ErrorNote, humanize } from '../components/ui';
 import { api } from '../data/api';
 
 const levels = [[1, 'Low'], [2, 'Medium'], [3, 'High']] as const;
 
 export function ReportIncident() {
+  const { user } = useAuth();
+  return user?.role === 'Customer' ? <CustomerReport /> : <StaffReport />;
+}
+
+const effects: [CustomerEffect, string, string][] = [
+  ['BLOCKED', 'I could not complete what I was doing', 'e.g. could not book, pay or log in'],
+  ['DEGRADED', 'It worked, but with problems', 'e.g. very slow, had to retry, wrong information shown'],
+  ['MINOR', 'A minor problem', 'e.g. a typo, layout issue or broken link']
+];
+
+/** Customers only describe the problem. Impact, urgency, category and priority are decided by the system. */
+function CustomerReport() {
+  const navigate = useNavigate();
+  const services = useLoad(() => api.services(), []);
+  const [input, setInput] = useState<CustomerIncidentInput>({ title: '', description: '', serviceId: 0, effect: 'DEGRADED', moneyTaken: false, stillHappening: true });
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = <K extends keyof CustomerIncidentInput>(key: K, value: CustomerIncidentInput[K]) => setInput(prev => ({ ...prev, [key]: value }));
+
+  async function submit(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setError('');
+    try {
+      const created = await api.report(input);
+      navigate(`/incidents/${created.incident.id}`, { state: { justCreated: true } });
+    } catch (err) { setError((err as Error).message); } finally { setBusy(false); }
+  }
+
+  return <>
+    <div className="page-heading"><div><div className="eyebrow">REPORT A PROBLEM</div><h1>Tell us what went wrong</h1></div><Link to="/incidents">Cancel</Link></div>
+    <ErrorNote message={services.error} />
+    <form onSubmit={submit}>
+      {error && <p role="alert" className="error">{error}</p>}
+      <label>What were you using?<select id="service" required value={input.serviceId || ''} onChange={e => set('serviceId', Number(e.target.value))}>
+        <option value="">Choose a service</option>{services.data?.map(s => <option key={s.id} value={s.id}>{humanize(s.name)}</option>)}
+      </select></label>
+      <label>Short summary<input id="title" required minLength={5} maxLength={120} value={input.title} onChange={e => set('title', e.target.value)} placeholder="e.g. Payment taken but no ticket" /></label>
+      <label>What happened?<textarea id="description" required minLength={10} maxLength={4000} value={input.description} onChange={e => set('description', e.target.value)} placeholder="What you were trying to do, what you saw, and roughly when" /></label>
+      <fieldset className="choice-group">
+        <legend>How did it affect you?</legend>
+        {effects.map(([value, label, hint]) => <label key={value} className="checkbox">
+          <input type="radio" name="effect" checked={input.effect === value} onChange={() => set('effect', value)} />
+          <span>{label}<small>{hint}</small></span>
+        </label>)}
+      </fieldset>
+      <label className="checkbox"><input id="money" type="checkbox" checked={input.moneyTaken} onChange={e => set('moneyTaken', e.target.checked)} />Money was taken from me but I did not get the ticket or service</label>
+      <label className="checkbox"><input id="ongoing" type="checkbox" checked={input.stillHappening} onChange={e => set('stillHappening', e.target.checked)} />It is still happening</label>
+      <p className="muted">Our IT team decides how urgent this is from your answers. You will be notified as it progresses, and a technician may ask you for more details.</p>
+      <button disabled={busy}>{busy ? 'Sending…' : 'Report problem'}</button>
+    </form>
+  </>;
+}
+
+/** Staff report with impact and urgency; the server confirms the priority. */
+function StaffReport() {
   const navigate = useNavigate();
   const services = useLoad(() => api.services(), []);
   const categories = useLoad(() => api.categories(), []);

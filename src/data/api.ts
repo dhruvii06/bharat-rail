@@ -1,5 +1,5 @@
 import type {
-  Action, AdminUser, Category, CreatedIncident, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
+  Action, AdminUser, Category, CreatedIncident, CustomerIncidentInput, Criticality, EmailOutboxEntry, Incident, IncidentInput, NewAccount, Notification,
   Overview, Service, Settings, SlaPolicy, Technician, User
 } from '../../shared/domain.ts';
 
@@ -80,7 +80,7 @@ export const api = {
 
   incidents: (filters: IncidentFilters = {}) => request<Incident[]>('GET', `/incidents${query({ ...filters })}`),
   incident: (id: string) => request<Incident>('GET', `/incidents/${encodeURIComponent(id)}`),
-  report: (input: IncidentInput) => request<CreatedIncident>('POST', '/incidents', input),
+  report: (input: IncidentInput | CustomerIncidentInput) => request<CreatedIncident>('POST', '/incidents', input),
   assign: (id: string, choice: { strategy?: string; technicianId?: number }) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/assignment`, choice),
   transition: (id: string, action: 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'VERIFY' | 'CLOSE', details: { summary?: string; rootCause?: string } = {}) =>
     request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/transitions`, { action, ...details }),

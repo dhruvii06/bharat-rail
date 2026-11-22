@@ -27,6 +27,7 @@ import com.railway.itsm.domain.exceptions.SLAPolicyNotFoundException;
 import com.railway.itsm.domain.model.SLAResult;
 import com.railway.itsm.domain.model.Technician;
 import com.railway.itsm.domain.strategy.AssignmentStrategy;
+import com.railway.itsm.domain.strategy.CustomerReportAssessment;
 import com.railway.itsm.domain.strategy.PriorityStrategy;
 import com.railway.itsm.service.app.Views.*;
 import com.railway.itsm.service.db.IntegrationQueries;
@@ -49,8 +50,10 @@ import java.util.stream.Collectors;
 public class IncidentWorkflowService {
     private static final Set<String> FINISHED = Set.of("RESOLVED", "VERIFIED", "CLOSED");
 
+    /** Staff fill in category, impact and urgency; customers answer effect / moneyTaken / stillHappening instead. */
     public record NewIncident(String title, String description, Long serviceId, String category,
-                              Integer impact, Integer urgency, Integer affectedUsers, Boolean tatkalWindow) {}
+                              Integer impact, Integer urgency, Integer affectedUsers, Boolean tatkalWindow,
+                              String effect, Boolean moneyTaken, Boolean stillHappening) {}
 
     private final IncidentRepository incidents;
     private final UserRepository users;
@@ -171,17 +174,32 @@ public class IncidentWorkflowService {
         String title = text(in.title(), "title", 5, 120);
         String description = text(in.description(), "description", 10, 4000);
         if (in.serviceId() == null) throw new IllegalArgumentException("Choose the affected service.");
-        IncidentCategory category = Mapping.category(Objects.requireNonNullElse(in.category(), ""));
-        if (queries.categories().stream().noneMatch(c -> c.code().equals(category.name()) && c.active()))
-            throw new IllegalArgumentException("The category " + category.name() + " is not available. Choose another category.");
-        int impact = range(in.impact(), "impact", 1, 3), urgency = range(in.urgency(), "urgency", 1, 3);
-        int affected = in.affectedUsers() == null ? 0 : range(in.affectedUsers(), "affected passengers", 0, 100_000_000);
-
         Snapshot s = snapshot();
         Instant now = clock.instant();
         Reporter reporter = s.reporter(actor.userId());
         RailwayService service = s.service(in.serviceId());
-        boolean tatkal = Boolean.TRUE.equals(in.tatkalWindow()) || TatkalWindow.contains(now);
+
+        IncidentCategory category;
+        int impact, urgency, affected;
+        boolean tatkal;
+        String customerAssessment = null;
+        if (actor.isCustomer()) {
+            // Customers only describe what happened. Their answers decide impact and urgency, the
+            // category comes from the service, and any ratings they send are ignored.
+            CustomerReportAssessment.Result r = CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(
+                    effect(in.effect()), Boolean.TRUE.equals(in.moneyTaken()), Boolean.TRUE.equals(in.stillHappening())));
+            impact = r.impact().score(); urgency = r.urgency().score(); affected = 1;
+            category = Mapping.category(s.services().get(in.serviceId()).getCategory());
+            tatkal = TatkalWindow.contains(now);
+            customerAssessment = r.explanation();
+        } else {
+            category = Mapping.category(Objects.requireNonNullElse(in.category(), ""));
+            if (queries.categories().stream().noneMatch(c -> c.code().equals(category.name()) && c.active()))
+                throw new IllegalArgumentException("The category " + category.name() + " is not available. Choose another category.");
+            impact = range(in.impact(), "impact", 1, 3); urgency = range(in.urgency(), "urgency", 1, 3);
+            affected = in.affectedUsers() == null ? 0 : range(in.affectedUsers(), "affected passengers", 0, 100_000_000);
+            tatkal = Boolean.TRUE.equals(in.tatkalWindow()) || TatkalWindow.contains(now);
+        }
 
         // Domain: build the incident, let the priority strategy classify it, look for duplicates.
         Incident incident = new Incident(title, description, reporter, service, category, Impact.values()[impact - 1],
@@ -207,6 +225,8 @@ public class IncidentWorkflowService {
         incidents.save(dto);
         queries.setAffectedUsers(id, affected);
         audit.save(new AuditLog(id, actor.userId(), "INCIDENT_CREATED", null, "NEW", "Reported by " + reporter.getName()));
+        if (customerAssessment != null)
+            audit.save(new AuditLog(id, null, "CUSTOMER_ASSESSMENT", "NEW", "NEW", customerAssessment));
         audit.save(new AuditLog(id, null, "PRIORITY_ASSIGNED", "NEW", "CLASSIFIED", PriorityExplainer.explain(incident, priority)));
         if (!duplicates.isEmpty())
             audit.save(new AuditLog(id, null, "POSSIBLE_DUPLICATE", "CLASSIFIED", "CLASSIFIED",
@@ -471,6 +491,11 @@ public class IncidentWorkflowService {
     // =====================================================================================
     // Helpers
     // =====================================================================================
+
+    private static CustomerReportAssessment.Effect effect(String text) {
+        try { return CustomerReportAssessment.Effect.valueOf(Objects.requireNonNullElse(text, "").trim().toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Tell us how the problem affected you."); }
+    }
 
     private String defaultStrategy() {
         String value = queries.setting("default_assignment_strategy", "skill");

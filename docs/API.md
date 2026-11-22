@@ -13,7 +13,7 @@ Base `/api/v1` on the Node API (port 3001; the Vite dev server forwards `/api`).
 | Method | Endpoint | Behaviour |
 | --- | --- | --- |
 | GET | `/health` | Public health check |
-| POST | `/auth/register` | `{name, email, password}` → 201 `{user}`. Public sign-up: always creates a **Passenger**; any `role` field is ignored. Employee, technician and manager accounts are created by the IT manager |
+| POST | `/auth/register` | `{name, email, password}` → 201 `{user}`. Public sign-up: always creates a **Customer**; any `role` field is ignored. Employee, technician and manager accounts are created by the IT manager |
 | POST | `/auth/change-password` | `{currentPassword, newPassword}` → `{user}`. Accounts created by the IT manager start with `mustChangePassword: true`; until changed, every endpoint except `/auth/me`, `/auth/change-password` and `/auth/logout` answers 403 `PASSWORD_CHANGE_REQUIRED` |
 | POST | `/auth/login` | `{email, password}` → `{token, expiresAt, user}`. 8-hour session. 5 failures on one email lock it for 15 min (429) |
 | POST | `/auth/logout` | Revokes the token → 204 |
@@ -27,6 +27,7 @@ Send `Authorization: Bearer <token>` on every other call.
 | --- | --- | --- | --- |
 | GET | `/incidents` | all | Role-scoped list: employees see their reports, technicians their assignments, managers everything. Filters: `q`, `status`, `priority`, `serviceId`, `category`, `technicianId`, `sla` (WITHIN / AT_RISK / BREACHED / MET), `from`, `to` (YYYY-MM-DD) |
 | POST | `/incidents` | Employee | `{title, description, serviceId, category, impact 1-3, urgency 1-3, affectedUsers?, tatkalWindow?}` → 201 `{incident, possibleDuplicates}`. Priority from `RailwayPriorityStrategy`, SLA deadlines from the priority, duplicates from `IncidentManagementService` |
+| POST | `/incidents` | Customer | `{title, description, serviceId, effect: BLOCKED / DEGRADED / MINOR, moneyTaken, stillHappening}`. Customers only describe: `CustomerReportAssessment` sets impact and urgency, the category comes from the service, and any impact, urgency, category, affected-user or Tatkal values they send are ignored |
 | GET | `/incidents/:id` | all (if visible) | Detail with `history`, `resolution`, `allowedActions` and `similar` |
 | POST | `/incidents/:id/assignment` | Manager | `{strategy: "skill" \| "load"}` or `{technicianId}` |
 | POST | `/incidents/:id/transitions` | by action | `{action: "ACKNOWLEDGE" \| "START" \| "RESOLVE" \| "VERIFY" \| "CLOSE"}`; RESOLVE also needs `summary` (10–4000) and `rootCause` (3–2000) |
