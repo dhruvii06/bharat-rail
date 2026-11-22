@@ -40,11 +40,6 @@ export function ImpactSimulator() {
       </div>
       <span className="impact-demo-pill">TRAINING SIMULATION</span>
     </div>
-    <div className="warning-box" role="note">
-      <strong>Hypothetical dependencies — not live IRCTC data.</strong> This demonstration does not monitor
-      actual outages, estimate real passenger numbers, change incident priority, or update records.
-    </div>
-
     <div className="impact-controls">
       <label>Simulate failure at
         <select id="impact-service" value={selectedService} onChange={e => { setSelectedService(e.target.value); setSelectedIncident(''); }}>
