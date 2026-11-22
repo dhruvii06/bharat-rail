@@ -7,8 +7,11 @@
   --br-muted: #647182;
   --br-soft-border: #e5e9ee;
   --br-input-border: #bfc8d3;
-  --br-header: #fff;
-  --br-header-text: #18304b;
+  --br-header: #18304b;
+  --br-header-text: #f1f5fb;
+  --br-header-muted: #c1d0df;
+  --br-header-border: #4a6582;
+  --br-header-hover: #24405f;
 }
 :root[data-theme="dark"] {
   --line: #31445a;
@@ -20,8 +23,11 @@
   --br-muted: #b2bfd0;
   --br-soft-border: #304257;
   --br-input-border: #52657b;
-  --br-header: #061426;
-  --br-header-text: #f1f5fb;
+  --br-header: #e9eef5;
+  --br-header-text: #18304b;
+  --br-header-muted: #3f556d;
+  --br-header-border: #b3c0cf;
+  --br-header-hover: #d5dde8;
   background: #0e1a2a;
   color-scheme: dark;
 }
@@ -37,14 +43,13 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
 .theme-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;background:transparent;color:var(--br-header-text);border:1px solid var(--line);font-size:12px;font-weight:500;min-height:34px;border-radius:6px;padding:6px 10px;cursor:pointer}
 .theme-toggle:hover{background:var(--br-surface-muted);color:var(--br-text)}
 .theme-toggle svg{flex:none}
-:root[data-theme="light"] .header-button{color:#23425d;border-color:#c8d2dd}
-:root[data-theme="light"] .header-button:hover{background:#eef3f6}
-:root[data-theme="light"] .who,:root[data-theme="light"] .who small,:root[data-theme="light"] .who-link{color:#324f6b}
-:root[data-theme="light"] .who-link:hover{color:#12304b}
-:root[data-theme="dark"] .who-link,:root[data-theme="dark"] .who small{color:#c1d0df}
-:root[data-theme="dark"] .who-link:hover{color:#fff}
-:root[data-theme="dark"] .header-button{color:#e3edf9;border-color:#52677b}
-:root[data-theme="dark"] .header-button:hover{background:#24364b}
+/* Everything in the top bar takes its colours from the --br-header-* tokens, so it contrasts with the page in both themes.
+   The :root[data-theme] prefix outranks the general dark-mode rules for small text, links and buttons. */
+:root[data-theme] header .header-button,:root[data-theme] header .theme-toggle{background:transparent;color:var(--br-header-text);border-color:var(--br-header-border)}
+:root[data-theme] header .header-button:hover,:root[data-theme] header .theme-toggle:hover{background:var(--br-header-hover);color:var(--br-header-text)}
+:root[data-theme] header .who{color:var(--br-header-text)}
+:root[data-theme] header .who small,:root[data-theme] header .who-link{color:var(--br-header-muted)}
+:root[data-theme] header .who-link:hover{color:var(--br-header-text)}
 .auth-shell{background:var(--br-surface-muted);position:relative}
 .auth-brand-logo{display:block;width:min(460px,94vw);height:auto;max-height:128px;object-fit:contain;margin:0 0 26px}
 .auth-theme-toggle{position:absolute;right:24px;top:24px;color:var(--br-text)}
@@ -122,7 +127,6 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
 :root[data-theme="dark"] a:hover{color:#c5edff}
 :root[data-theme="dark"] nav>a{color:#c4d1e0}
 :root[data-theme="dark"] nav>a.active{color:#b1e1f8}
-:root[data-theme="dark"] .header-brand{color:inherit}
 @media(max-width:700px){
   .header-brand{width:min(240px,100%);max-width:50vw}
   .header-brand-logo{height:44px}
@@ -134,10 +138,6 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
 }
 @media(prefers-reduced-motion:reduce){body{transition:none}}
 
-/* Preserve the provided gradient illustrations without visible rectangular backgrounds. */
-:root[data-theme="light"] .brand-logo{mix-blend-mode:multiply}
-:root[data-theme="dark"] .brand-logo{mix-blend-mode:screen}
-@media(forced-colors:active){.brand-logo{mix-blend-mode:normal}}
 
 /* Dark-mode contrast fixes (WCAG AA, 4.5:1 for normal text). The dark accent is light blue,
    so primary buttons get a deeper blue behind their white text; reds and simulator labels are lightened for dark surfaces. */

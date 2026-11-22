@@ -29,7 +29,7 @@ function Shell({ user }: { user: User }) {
   const reporter = reporterRoles.includes(user.role);
   return <>
     <header>
-      <Link className="header-brand" to="/" aria-label="Bharat Rail ITSM — Home"><BrandLogo className="header-brand-logo" /></Link>
+      <Link className="header-brand" to="/" aria-label="Bharat Rail ITSM — Home"><BrandLogo className="header-brand-logo" surface="header" /></Link>
       <div className="header-actions">
         <ThemeToggle />
         <Notifications />

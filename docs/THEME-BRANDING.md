@@ -1,18 +1,25 @@
 # Light and dark themes — Bharat Rail ITSM
 
-This feature uses the **two logos supplied by the project team**, not newly generated artwork. The images are cropped and compressed into compact WebP files for web use, retaining the train illustration, shading, colours, name and **For Every Journey** tagline.
+Both themes use the **same logo**: the light-mode logo supplied by the team. The dark-theme copy is the same artwork recoloured by `scripts/recolor-logo.py`. The navy text, train and grey tagline become light; the orange and green stay unchanged. Both files have transparent backgrounds, so they sit cleanly on any surface.
 
-| Theme | Asset |
+| Background | Asset |
 |---|---|
-| Light | `public/brand/bharat-rail-light.webp` |
-| Dark | `public/brand/bharat-rail-dark.webp` |
+| Light (sign-in page in light mode, top bar in dark mode) | `public/brand/bharat-rail-light.webp` |
+| Dark (sign-in page in dark mode, top bar in light mode) | `public/brand/bharat-rail-dark.webp` |
+
+To regenerate the dark copy after the logo changes (needs Python with Pillow):
+
+```bash
+python scripts/recolor-logo.py <original-light-logo> public/brand/bharat-rail-light.webp public/brand/bharat-rail-dark.webp
+```
 
 ## Behaviour
 
 - Theme toggle in the header for all signed-in roles and on the login/registration page.
 - Default to the browser's operating-system preference when no prior choice is saved.
 - A deliberate choice overrides OS preference and persists under localStorage key `bharat-rail.theme`.
-- The selected logo changes instantly on toggle on the login page and inside the application.
+- The top bar always contrasts with the page: navy in light mode and light grey-blue in dark mode, so the bar uses the logo for the opposite background (`BrandLogo surface="header"`).
+- The logo changes instantly on toggle on the login page and inside the application.
 - Shared `src/theme.tsx` state updates `document.documentElement.dataset.theme`. CSS overrides live in `src/theme.css` to avoid rewriting the existing team stylesheet.
 - The theme changes dashboard cards, forms, tables, navigation, notification menus, administrator pages, severity labels, and the impact simulator.
 - Accessible text/icon toggle with `aria-label`, keyboard access, visible focus and responsive layout.
@@ -32,7 +39,7 @@ npm run build
 2. Toggle on sign-in, sign in, and verify the chosen mode persists.
 3. Refresh and navigate between dashboard, incident detail, admin and simulator.
 4. Test narrow screens and keyboard-only use of the switch.
-5. Compare both logos to the uploaded originals, especially train shading and tagline.
+5. Compare the light logo with the uploaded original, and check that the dark copy matches it apart from colour.
 6. In a private/incognito browser with blocked storage, ensure toggle still works for the current session.
 
 ## Scope
