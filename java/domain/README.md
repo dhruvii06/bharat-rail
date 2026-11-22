@@ -62,7 +62,8 @@ src/main/java/com/railway/itsm/
   infrastructure/InMemoryIncidentRepository, simulated Email/InApp notifications
   demo/          Main
 src/test/java/com/railway/itsm/DomainModelChecks.java
-docs/domain-class-diagram.mmd
+docs/domain-class-diagram.mmd (core design)
+docs/domain-class-diagram-extensions.mmd (exceptions, SLA and impact graph)
 
 docs/architecture.png
 ```
