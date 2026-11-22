@@ -1,0 +1,91 @@
+classDiagram
+direction LR
+
+%% Supplementary domain diagram: exception hierarchy, SLA evaluation and read-only graph simulation.
+%% ServiceNode, AffectedService, and ImpactReport are nested Java records of ServiceDependencyGraph.
+
+class DomainException {
+  <<exception>>
+}
+class InvalidTransitionException {
+  <<exception>>
+}
+class NoTechnicianAvailableException {
+  <<exception>>
+}
+class TechnicianUnavailableException {
+  <<exception>>
+}
+class TechnicianWorkloadExceededException {
+  <<exception>>
+}
+class SLAPolicyNotFoundException {
+  <<exception>>
+}
+class UnauthorizedIncidentOperationException {
+  <<exception>>
+}
+DomainException <|-- InvalidTransitionException
+DomainException <|-- NoTechnicianAvailableException
+DomainException <|-- TechnicianUnavailableException
+DomainException <|-- TechnicianWorkloadExceededException
+DomainException <|-- SLAPolicyNotFoundException
+DomainException <|-- UnauthorizedIncidentOperationException
+
+class Incident
+class Technician
+class SLAPolicy
+class SkillBasedAssignmentStrategy
+class LoadBasedAssignmentStrategy
+Incident ..> InvalidTransitionException : invalid state
+Incident ..> UnauthorizedIncidentOperationException : unauthorized actor
+Technician ..> TechnicianUnavailableException : unavailable
+Technician ..> TechnicianWorkloadExceededException : at capacity
+SLAPolicy ..> SLAPolicyNotFoundException : missing policy
+SkillBasedAssignmentStrategy ..> NoTechnicianAvailableException : no candidate
+LoadBasedAssignmentStrategy ..> NoTechnicianAvailableException : no candidate
+
+class ServiceDependencyGraph {
+  -Map~String,ServiceNode~ nodes
+  +analyze(String) ImpactReport
+  +railwayExample() ServiceDependencyGraph
+}
+class ServiceNode {
+  <<record>>
+  +String id
+  +String label
+  +String owner
+  +int criticality
+  +List~String~ dependents
+}
+class AffectedService {
+  <<record>>
+  +String id
+  +String label
+  +String owner
+  +int criticality
+  +int depth
+  +List~String~ path
+}
+class ImpactReport {
+  <<record>>
+  +ServiceNode failed
+  +List~AffectedService~ affected
+  +int directCount
+  +int indirectCount
+  +String advisoryPriority
+  +List~String~ recommendations
+}
+ServiceDependencyGraph "1" *-- "1..*" ServiceNode : modelled services
+ServiceDependencyGraph ..> ImpactReport : creates
+ImpactReport "1" *-- "0..*" AffectedService : downstream impact
+ImpactReport --> ServiceNode : failure source
+
+class SLAEvaluator {
+  +evaluate(Incident, Instant) SLAResult
+}
+class SLAResult {
+  <<record>>
+}
+SLAEvaluator ..> SLAResult : evaluates
+SLAEvaluator ..> Incident : checks deadlines

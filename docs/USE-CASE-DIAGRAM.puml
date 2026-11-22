@@ -1,0 +1,138 @@
+@startuml
+' Bharat Rail ITSM — UML use case diagram.
+' Based on the actual React roles, Node API permissions and Java workflow.
+' Render with PlantUML for the final report (see docs/UML-DIAGRAMS.md).
+
+left to right direction
+skinparam shadowing false
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Arial
+skinparam ArrowColor #547189
+skinparam linetype ortho
+skinparam actor {
+  FontColor #243F57
+  BorderColor #243F57
+}
+skinparam usecase {
+  BackgroundColor #F5FAFF
+  BorderColor #3B6887
+  FontColor #16354D
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #B5C9D8
+  FontColor #243F57
+}
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #2B5878
+}
+
+actor "Reporter" as Reporter
+actor "Employee" as Employee
+actor "Customer" as Customer
+actor "Technician" as Technician
+actor "IT Manager /\nAdministrator" as Manager
+
+Employee --|> Reporter
+Customer --|> Reporter
+
+rectangle "Bharat Rail ITSM — Incident Management" {
+  package "Account & Reporter" {
+    usecase "Sign in / change\npassword" as Login
+    usecase "Register account" as Register
+    usecase "Report incident" as Report
+    usecase "View / track incident" as Track
+    usecase "Edit incident details" as Edit
+    usecase "Provide requested\ninformation" as Answer
+    usecase "Exchange messages" as Message
+    usecase "Verify resolution" as Verify
+    usecase "Give feedback" as Feedback
+    usecase "View notifications" as Inbox
+  }
+
+  package "Technician Operations" {
+    usecase "View assignments" as ViewWork
+    usecase "Acknowledge incident" as Acknowledge
+    usecase "Investigate / add notes" as Investigate
+    usecase "Request information" as RequestInfo
+    usecase "Resolve incident" as Resolve
+    usecase "Handover / handoff\nincident" as Handover
+  }
+
+  package "IT Management" {
+    usecase "Assign / reassign\ntechnician" as Assign
+    usecase "Close verified incident" as Close
+    usecase "Override priority\nwith reason" as Override
+    usecase "Manage users &\ntechnicians" as ManageUsers
+    usecase "Configure categories,\nservices, SLA & strategies" as Configure
+    usecase "Monitor SLA & view\nreports / audit" as Monitor
+    usecase "Simulate service\nimpact" as Simulate
+  }
+
+  package "Automated Incident Rules" {
+    usecase "Classify incident" as Classify
+    usecase "Calculate priority" as Prioritize
+    usecase "Set SLA deadlines" as SetSLA
+    usecase "Detect similar\nincidents" as Duplicates
+    usecase "Generate notifications" as Notify
+    usecase "Record audit trail" as Audit
+  }
+}
+
+Reporter --> Login
+Reporter --> Report
+Reporter --> Track
+Reporter --> Edit
+Reporter --> Answer
+Reporter --> Message
+Reporter --> Verify
+Reporter --> Feedback
+Reporter --> Inbox
+Customer --> Register
+
+Technician --> Login
+Technician --> ViewWork
+Technician --> Acknowledge
+Technician --> Investigate
+Technician --> RequestInfo
+Technician --> Resolve
+Technician --> Handover
+Technician --> Message
+Technician --> Inbox
+
+Manager --> Login
+Manager --> Track
+Manager --> Edit
+Manager --> Assign
+Manager --> Close
+Manager --> Override
+Manager --> ManageUsers
+Manager --> Configure
+Manager --> Monitor
+Manager --> Simulate
+Manager --> Inbox
+
+Report ..> Classify : <<include>>
+Classify ..> Prioritize : <<include>>
+Classify ..> SetSLA : <<include>>
+Report ..> Duplicates : <<include>>
+Report ..> Audit : <<include>>
+Report ..> Notify : <<include>>
+Assign ..> Notify : <<include>>
+Assign ..> Audit : <<include>>
+Resolve ..> Notify : <<include>>
+Resolve ..> Audit : <<include>>
+RequestInfo ..> Notify : <<include>>
+RequestInfo ..> Audit : <<include>>
+Handover ..> Notify : <<include>>
+Handover ..> Audit : <<include>>
+Verify ..> Audit : <<include>>
+Close ..> Audit : <<include>>
+
+note bottom of Simulate
+  Educational what-if analysis.
+  No live railway telemetry or
+  automatic ticket modifications.
+end note
+@enduml

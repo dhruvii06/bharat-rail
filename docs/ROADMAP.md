@@ -44,7 +44,8 @@ The service, API and test runner require separate terminals unless launched by a
 
 - [ ] Capture output of the end-to-end suites against a clean PostgreSQL/Java/Node environment.
 - [ ] Manually test the React website in light and dark mode, on desktop/mobile and across all four roles.
-- [ ] Render and verify the latest UML class diagram in `java/domain/docs/domain-class-diagram.mmd`, plus a use case diagram.
+- [x] Class UML source updated at `java/domain/docs/domain-class-diagram.mmd` and supplementary exception/impact graph at `java/domain/docs/domain-class-diagram-extensions.mmd`; render and visually proofread before the report.
+- [x] Formal UML use case source added at `docs/USE-CASE-DIAGRAM.puml` (PlantUML); render to SVG/PNG for the report.
 - [x] ER diagram source added at `docs/ER-DIAGRAM.mmd`; render and proofread against schema before final PDF.
 - [ ] Document at least 15 meaningful test cases and include actual pass/fail evidence.
 - [ ] Include a technology selection report, architecture, security considerations and how OOP concepts are applied.

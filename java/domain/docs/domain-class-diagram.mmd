@@ -1,211 +1,210 @@
 classDiagram
- direction LR
+direction LR
 
- class User {
-   <<abstract>>
-   -UUID id
-   -String name
-   -String email
-   +getRole() String
- }
- class Reporter {
-   <<abstract>>
- }
- class Employee
- class Customer
- class Technician {
-   -Set~Skill~ skills
-   -int activeIncidents
-   -int maxConcurrentIncidents
-   -boolean available
-   +takeIncident()
-   +finishIncident()
-   +setAvailable(boolean)
- }
- class Administrator
- User <|-- Reporter
- Reporter <|-- Employee
- Reporter <|-- Customer
- User <|-- Technician
- User <|-- Administrator
+%% Bharat Rail ITSM — core Java domain and OOP design patterns.
+%% UML is based on the actual java/domain source code, not on hypothetical API methods.
+%% The exception hierarchy and simulated dependency graph are in domain-class-diagram-extensions.mmd.
 
- class Incident {
-   -UUID id
-   -String title
-   -String description
-   -IncidentStatus status
-   -Priority priority
-   -IncidentCategory category
-   -Reporter reporter
-   -Technician assignedTechnician
-   +classify()
-   +assign()
-   +acknowledge()
-   +startInvestigation()
-   +requestInformation()
-   +provideInformation()
-   +resolve()
-   +verify()
-   +close()
-   +edit()
-   +changePriority()
-   +requestHandover()
-   +acceptHandover()
-   +declineHandover()
-   +withdrawHandover()
-   +handOff()
-   +handBack()
- }
- class TransferRequest {
-   <<record>>
-   +Technician from
-   +Technician to
-   +String reason
-   +Instant requestedAt
- }
- class IncidentCategory {
-   <<value object>>
-   -String code
-   -String label
-   -Skill handledBy
-   +of(code,label,skill) IncidentCategory
-   +isSecurity() boolean
- }
- class RailwayService {
-   -UUID id
-   -String name
-   -int businessCriticality
-   -boolean tatkalBookingPath
- }
- class SLAPolicy {
-   <<record>>
-   +Priority priority
-   +Duration responseTarget
-   +Duration resolutionTarget
- }
- class Resolution {
-   <<record>>
-   +String summary
-   +String rootCause
-   +Instant resolvedAt
- }
- class AuditEntry {
-   <<record>>
-   +Instant timestamp
-   +String action
-   +IncidentStatus previousStatus
-   +IncidentStatus newStatus
- }
- Incident --> Reporter : reported by
- Incident --> Technician : assigned to
- Incident --> RailwayService : affects
- Incident --> IncidentCategory : classified as
- Incident --> SLAPolicy : SLA for priority
- Incident *-- Resolution : resolution
- Incident *-- AuditEntry : audit history
- Incident o-- TransferRequest : pending handover
- Incident --> Technician : prior contributors
- TransferRequest --> Technician : from and to
+class User {
+  <<abstract>>
+  -UUID id
+  -String name
+  -String email
+  +getId() UUID
+  +getName() String
+  +getEmail() String
+  +getRole() String
+}
+class Reporter {
+  <<abstract>>
+}
+class Employee {
+  +getRole() String
+}
+class Customer {
+  +getRole() String
+}
+class Technician {
+  -Set~Skill~ skills
+  -int maxConcurrentIncidents
+  -int activeIncidents
+  -boolean available
+  +isAvailable() boolean
+  +setAvailable(boolean) void
+  +takeIncident() void
+  +finishIncident() void
+}
+class Administrator {
+  +getRole() String
+}
+User <|-- Reporter
+Reporter <|-- Employee
+Reporter <|-- Customer
+User <|-- Technician
+User <|-- Administrator
 
- class PriorityStrategy {
-   <<interface>>
-   +calculate(Incident) Priority
- }
- class RailwayPriorityStrategy {
-   +calculate(Incident) Priority
- }
- PriorityStrategy <|.. RailwayPriorityStrategy
+class Incident {
+  -UUID id
+  -String title
+  -String description
+  -IncidentStatus status
+  -Priority priority
+  -Reporter reporter
+  -RailwayService affectedService
+  -IncidentCategory category
+  -Technician assignedTechnician
+  -SLAPolicy slaPolicy
+  -List~AuditEntry~ auditTrail
+  -Resolution resolution
+  -TransferRequest pendingHandover
+  +classify(Priority, User, Instant) void
+  +assign(Technician, User, Instant) void
+  +acknowledge(Technician, Instant) void
+  +startInvestigation(Technician, Instant) void
+  +requestInformation(Technician, String, Instant) void
+  +provideInformation(Reporter, String, Instant) void
+  +resolve(Technician, String, String, Instant) void
+  +verify(Reporter, Instant) void
+  +close(Administrator, Instant) void
+  +edit(User, String, String, IncidentCategory, Instant) void
+  +changePriority(Priority, SLAPolicy, Administrator, String, Instant) void
+  +requestHandover(Technician, Technician, String, Instant) void
+  +acceptHandover(Technician, Instant) void
+  +declineHandover(Technician, String, Instant) void
+  +withdrawHandover(Technician, Instant) void
+  +handOff(Technician, Technician, String, Instant) void
+  +handBack(Technician, String, Instant) void
+}
+class IncidentCategory {
+  <<valueObject>>
+  -String code
+  -String label
+  -Skill handledBy
+  +of(String, String, Skill) IncidentCategory
+  +isSecurity() boolean
+}
+class RailwayService {
+  -UUID id
+  -String name
+  -int businessCriticality
+  -boolean tatkalBookingPath
+  +getBusinessCriticality() int
+  +isOnTatkalBookingPath() boolean
+}
+class SLAPolicy {
+  <<record>>
+  +Priority priority
+  +Duration responseTarget
+  +Duration resolutionTarget
+  +forPriority(Priority) SLAPolicy
+}
+class Resolution {
+  <<record>>
+  +String summary
+  +String rootCause
+  +Instant resolvedAt
+}
+class AuditEntry {
+  <<record>>
+  +UUID incidentId
+  +Instant timestamp
+  +UUID actorId
+  +String action
+  +IncidentStatus previousStatus
+  +IncidentStatus newStatus
+  +String details
+}
+class TransferRequest {
+  <<record>>
+  +Technician from
+  +Technician to
+  +String reason
+  +Instant requestedAt
+}
+Incident "0..*" --> "1" Reporter : reported by
+Incident "0..*" --> "1" RailwayService : affects
+Incident "0..*" --> "1" IncidentCategory : category
+Incident "0..*" --> "0..1" Technician : assigned to
+Incident "0..*" --> "0..1" SLAPolicy : SLA
+Incident "1" *-- "0..1" Resolution : owns
+Incident "1" *-- "0..*" AuditEntry : audit history
+Incident "1" *-- "0..1" TransferRequest : pending handover
+Incident "1" o-- "0..*" Technician : past contributors
+TransferRequest --> Technician : from / to
 
- class AssignmentStrategy {
-   <<interface>>
-   +select(Incident, List) Technician
- }
- class SkillBasedAssignmentStrategy
- class LoadBasedAssignmentStrategy
- AssignmentStrategy <|.. SkillBasedAssignmentStrategy
- AssignmentStrategy <|.. LoadBasedAssignmentStrategy
+class PriorityStrategy {
+  <<interface>>
+  +calculate(Incident) Priority
+}
+class RailwayPriorityStrategy {
+  +calculate(Incident) Priority
+}
+PriorityStrategy <|.. RailwayPriorityStrategy
+RailwayPriorityStrategy ..> Incident : evaluates
 
- class IncidentRepository {
-   <<interface>>
-   +save(Incident)
-   +findById(UUID)
-   +findAll()
- }
- class InMemoryIncidentRepository
- IncidentRepository <|.. InMemoryIncidentRepository
+class AssignmentStrategy {
+  <<interface>>
+  +select(Incident, List~Technician~) Technician
+}
+class SkillBasedAssignmentStrategy {
+  +select(Incident, List~Technician~) Technician
+}
+class LoadBasedAssignmentStrategy {
+  +select(Incident, List~Technician~) Technician
+}
+AssignmentStrategy <|.. SkillBasedAssignmentStrategy
+AssignmentStrategy <|.. LoadBasedAssignmentStrategy
 
- class IncidentListener {
-   <<interface>>
-   +onEvent(IncidentEvent)
- }
- class NotificationSender {
-   <<interface>>
- }
- class EventPublisher {
-   +subscribe(IncidentListener)
-   +publish(IncidentEvent)
- }
- class EmailNotification
- class InAppNotification
- IncidentListener <|-- NotificationSender
- NotificationSender <|.. EmailNotification
- NotificationSender <|.. InAppNotification
- EventPublisher --> IncidentListener : notifies subscribers
+class IncidentRepository {
+  <<interface>>
+  +save(Incident) void
+  +findById(UUID) Optional~Incident~
+  +findAll() List~Incident~
+}
+class InMemoryIncidentRepository
+IncidentRepository <|.. InMemoryIncidentRepository
 
- class IncidentManagementService {
-   +createIncident()
-   +assignIncident()
- }
- IncidentManagementService --> PriorityStrategy
- IncidentManagementService --> AssignmentStrategy
- IncidentManagementService --> IncidentRepository
- IncidentManagementService --> EventPublisher
+class IncidentEvent {
+  <<record>>
+  +UUID incidentId
+  +String type
+  +String message
+  +Instant timestamp
+}
+class IncidentListener {
+  <<interface>>
+  +onEvent(IncidentEvent) void
+}
+class NotificationSender {
+  <<interface>>
+}
+class EventPublisher {
+  -List~IncidentListener~ listeners
+  +subscribe(IncidentListener) void
+  +publish(IncidentEvent) void
+}
+class EmailNotification {
+  +onEvent(IncidentEvent) void
+}
+class InAppNotification {
+  +onEvent(IncidentEvent) void
+}
+IncidentListener <|-- NotificationSender : extends
+NotificationSender <|.. EmailNotification
+NotificationSender <|.. InAppNotification
+EventPublisher o-- IncidentListener : subscribers
+EventPublisher ..> IncidentEvent : publishes
 
- class ServiceDependencyGraph {
-   +analyze(String) ImpactReport
-   +railwayExample() ServiceDependencyGraph
- }
- class ServiceNode {
-   <<record>>
-   +String id
-   +String label
-   +List~String~ dependents
- }
- class AffectedService {
-   <<record>>
-   +String id
-   +int depth
-   +List~String~ path
- }
- class ImpactReport {
-   <<record>>
-   +ServiceNode failed
-   +List~AffectedService~ affected
-   +String advisoryPriority
- }
- ServiceDependencyGraph *-- ServiceNode : known services
- ServiceDependencyGraph ..> ImpactReport : produces
- ImpactReport *-- AffectedService
- ImpactReport --> ServiceNode
-
- class DomainException {
-   <<exception>>
- }
- class InvalidTransitionException
- class NoTechnicianAvailableException
- class TechnicianUnavailableException
- class TechnicianWorkloadExceededException
- class SLAPolicyNotFoundException
- class UnauthorizedIncidentOperationException
- DomainException <|-- InvalidTransitionException
- DomainException <|-- NoTechnicianAvailableException
- DomainException <|-- TechnicianUnavailableException
- DomainException <|-- TechnicianWorkloadExceededException
- DomainException <|-- SLAPolicyNotFoundException
- DomainException <|-- UnauthorizedIncidentOperationException
- Incident ..> InvalidTransitionException : throws
- Incident ..> UnauthorizedIncidentOperationException : throws
- Technician ..> TechnicianUnavailableException : throws
- Technician ..> TechnicianWorkloadExceededException : throws
- SLAPolicy ..> SLAPolicyNotFoundException : used by factory
-
+class IncidentManagementService {
+  -IncidentRepository repository
+  -PriorityStrategy priorityStrategy
+  -AssignmentStrategy assignmentStrategy
+  -EventPublisher publisher
+  +report(Incident) Incident
+  +classifyAndAssign(Incident, Administrator, List~Technician~, Instant) void
+  +findPotentialDuplicates(Incident) List~Incident~
+}
+IncidentManagementService --> IncidentRepository : persists
+IncidentManagementService --> PriorityStrategy : prioritizes
+IncidentManagementService --> AssignmentStrategy : assigns
+IncidentManagementService --> EventPublisher : notifies
