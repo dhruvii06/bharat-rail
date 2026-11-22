@@ -138,3 +138,14 @@ header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px
 :root[data-theme="light"] .brand-logo{mix-blend-mode:multiply}
 :root[data-theme="dark"] .brand-logo{mix-blend-mode:screen}
 @media(forced-colors:active){.brand-logo{mix-blend-mode:normal}}
+
+/* Dark-mode contrast fixes (WCAG AA, 4.5:1 for normal text). The dark accent is light blue,
+   so primary buttons get a deeper blue behind their white text; reds and simulator labels are lightened for dark surfaces. */
+:where(:root[data-theme="dark"]) button,:where(:root[data-theme="dark"]) .button-link{background:#2c6a88;border-color:#2c6a88;color:#fff}
+:root[data-theme="dark"] .auth-panel .text-button{color:var(--accent)}
+:root[data-theme="dark"] .sla-breach{color:#ff9b9b}
+:root[data-theme="dark"] .history .transition{color:#a9b8ca}
+:root[data-theme="dark"] .history .desc{color:#b2bfd0}
+:root[data-theme="dark"] .impact-node em{color:#f1c38f}
+:root[data-theme="dark"] .impact-node.failed em{color:#ff9b9b}
+:root[data-theme="dark"] .demo-accounts li span{color:#b2bfd0}
