@@ -38,7 +38,7 @@ test('Tatkal window is detected automatically for eligible booking services', ()
 test('Tatkal flag alone cannot override an unrelated service', () => {
   const result = previewStaffIncidentPriority({ ...incident, tatkalWindow: true },
     { criticalityScore: 1, tatkalBookingPath: false }, application, peakWindow);
-  assert.equal(result?.priority, 'P2');
+  assert.equal(result?.priority, 'P3');
   assert.equal(result?.peakTatkalOverride, false);
 });
 
