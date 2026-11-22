@@ -34,7 +34,12 @@
 :root {color-scheme:light}
 html[data-theme="dark"] body {background:#0e1a2a;color:var(--br-text)}
 html[data-theme="light"] body {background:#f5f6f8;color:#293746}
-body {transition:background-color .18s ease,color .18s ease}
+/* Theme switch: one cross-fade of the whole page (View Transitions), or a short colour fade where that API is missing. */
+::view-transition-old(root),::view-transition-new(root){animation-duration:.32s;animation-timing-function:ease-in-out}
+html.theme-changing,html.theme-changing *,html.theme-changing *::before,html.theme-changing *::after{transition:background-color .32s ease,color .32s ease,border-color .32s ease,fill .32s ease,stroke .32s ease !important}
+@media (prefers-reduced-motion:reduce){::view-transition-old(root),::view-transition-new(root){animation:none}html.theme-changing *{transition:none !important}}
+/* Both logo colourings are in the page; show the one for the current theme. */
+:root[data-theme="dark"] .brand-logo-light,:root:not([data-theme="dark"]) .brand-logo-dark{display:none}
 header{background:var(--br-header);color:var(--br-header-text);border-bottom:1px solid var(--line);box-shadow:0 1px 4px rgba(8,20,35,.05)}
 .header-brand{display:flex;align-items:center;width:255px;max-width:40vw;min-width:0;min-height:44px}
 .header-brand-logo{display:block;width:100%;height:52px;object-fit:contain;object-position:left center}
