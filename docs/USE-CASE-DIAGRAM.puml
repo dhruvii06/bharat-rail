@@ -42,7 +42,8 @@ rectangle "Bharat Rail ITSM — Incident Management" {
     usecase "Sign in / change\npassword" as Login
     usecase "Register account" as Register
     usecase "Report incident" as Report
-    usecase "Track / edit own\nincident" as Track
+    usecase "View / track incident" as Track
+    usecase "Edit incident details" as Edit
     usecase "Provide requested\ninformation" as Answer
     usecase "Exchange messages" as Message
     usecase "Verify resolution" as Verify
@@ -82,6 +83,7 @@ rectangle "Bharat Rail ITSM — Incident Management" {
 Reporter --> Login
 Reporter --> Report
 Reporter --> Track
+Reporter --> Edit
 Reporter --> Answer
 Reporter --> Message
 Reporter --> Verify
@@ -101,6 +103,7 @@ Technician --> Inbox
 
 Manager --> Login
 Manager --> Track
+Manager --> Edit
 Manager --> Assign
 Manager --> Close
 Manager --> Override
