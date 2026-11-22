@@ -2,6 +2,8 @@ import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import { reporterRoles, type User } from '../shared/domain';
 import { useAuth } from './auth';
 import { Notifications } from './components/Notifications';
+import { BrandLogo } from './components/BrandLogo';
+import { ThemeToggle } from './components/ThemeToggle';
 import { Admin } from './pages/Admin';
 import { ChangePassword } from './pages/ChangePassword';
 import { IncidentDetail } from './pages/IncidentDetail';
@@ -27,8 +29,9 @@ function Shell({ user }: { user: User }) {
   const reporter = reporterRoles.includes(user.role);
   return <>
     <header>
-      <div><strong>Bharat Rail (BR) <span className="brand-divider">/</span> Incident Desk</strong></div>
+      <Link className="header-brand" to="/" aria-label="Bharat Rail ITSM — Home"><BrandLogo className="header-brand-logo" /></Link>
       <div className="header-actions">
+        <ThemeToggle />
         <Notifications />
         <span className="who">{user.name}<small>{roleLabel(user.role)} · <Link to="/account" className="who-link">Change password</Link></small></span>
         <button className="header-button" onClick={() => void signOut()}>Sign out</button>
