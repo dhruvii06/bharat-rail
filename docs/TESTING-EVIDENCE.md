@@ -90,8 +90,8 @@ Show the complete workflow in the browser, not merely individual API requests. D
 - [ ] Problem analysis and scope, assumptions and stakeholders
 - [ ] Functional and nonfunctional requirements
 - [ ] Architecture diagram: `docs/ARCHITECTURE.md`
-- [ ] Use case diagram: `docs/USE-CASE-DIAGRAM.mmd` (render to image)
-- [ ] Updated class diagram: `java/domain/docs/domain-class-diagram.mmd` (render and proofread)
+- [x] UML use case diagram source: `docs/USE-CASE-DIAGRAM.puml` (PlantUML; render and inspect)
+- [x] Core class diagram source: `java/domain/docs/domain-class-diagram.mmd` and supplemental domain diagram: `java/domain/docs/domain-class-diagram-extensions.mmd` (render and inspect)
 - [x] PostgreSQL ER diagram source: `docs/ER-DIAGRAM.mmd` (render and proofread before submission)
 - [ ] Technology selection rationale and alternatives
 - [ ] Role-based security explanation and limitations
