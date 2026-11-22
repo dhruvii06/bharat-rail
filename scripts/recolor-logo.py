@@ -12,6 +12,17 @@ from PIL import Image
 
 src, out_light, out_dark = sys.argv[1:4]
 im = Image.open(src).convert('RGB')
+
+# Trim the white margin around the artwork (keeping a small border), so the logo fills its box.
+PAD = 12
+grey = im.convert('L').point(lambda v: 255 if v < 235 else 0)
+box = grey.getbbox()
+if box:
+    im = im.crop((max(0, box[0] - PAD), max(0, box[1] - PAD), min(im.width, box[2] + PAD), min(im.height, box[3] + PAD)))
+# 1000 px wide covers the largest use (the sign-in logo on 2x screens) without shipping extra bytes.
+MAX_WIDTH = 1000
+if im.width > MAX_WIDTH:
+    im = im.resize((MAX_WIDTH, round(im.height * MAX_WIDTH / im.width)), Image.LANCZOS)
 w, h = im.size
 light = Image.new('RGBA', (w, h))
 dark = Image.new('RGBA', (w, h))
@@ -41,6 +52,7 @@ for y in range(h):
         dr, dg, db = colorsys.hls_to_rgb(hh, ll, ss)
         dark.putpixel((x, y), (round(dr * 255), round(dg * 255), round(db * 255), alpha))
 
-light.save(out_light, 'WEBP', lossless=True)
-dark.save(out_dark, 'WEBP', lossless=True)
-print('saved', out_light, out_dark)
+# High-quality lossy WebP keeps edges sharp at a fraction of the lossless size; alpha stays exact.
+for image, out in ((light, out_light), (dark, out_dark)):
+    image.save(out, 'WEBP', quality=92, alpha_quality=100, method=6)
+print('saved', out_light, out_dark, f'{w}x{h}')

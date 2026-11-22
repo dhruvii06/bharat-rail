@@ -5,7 +5,7 @@
  * never waits for an image to load. The top bar follows the theme (light teal or deep teal).
  */
 export function BrandLogo({ className = '' }: { className?: string }) {
-  const common = { alt: 'Bharat Rail ITSM — For Every Journey', width: 350, height: 83, decoding: 'async' as const };
+  const common = { alt: 'Bharat Rail ITSM — For Every Journey', width: 1000, height: 209, decoding: 'async' as const };
   return <>
     <img {...common} className={['brand-logo', 'brand-logo-light', className].filter(Boolean).join(' ')} src="/brand/bharat-rail-light.webp" />
     <img {...common} className={['brand-logo', 'brand-logo-dark', className].filter(Boolean).join(' ')} src="/brand/bharat-rail-dark.webp" alt="" aria-hidden="true" />
