@@ -7,16 +7,6 @@ import { ThemeToggle } from '../components/ThemeToggle';
 // Sign-in and customer self-registration (design by Dhruvi). Members of the public register as
 // Customers to report problems; employee, technician and manager accounts are created by the IT manager.
 
-const demoAccounts = [
-  ['customer@demo.local', 'Customer · member of the public'],
-  ['support1@demo.local', 'Employee · Customer Support'],
-  ['ops@demo.local', 'Employee · Station Operations'],
-  ['tech.payment@demo.local', 'Technician · Payments'],
-  ['tech.database@demo.local', 'Technician · Database'],
-  ['app.tech@demo.local', 'Technician · Application'],
-  ['admin1@demo.local', 'IT Manager']
-];
-
 export function Login() {
   const { signIn } = useAuth();
   const [register, setRegister] = useState(false);
@@ -62,11 +52,6 @@ export function Login() {
         <button disabled={busy}>{busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}</button>
       </form>
       <button type="button" className="text-button" disabled={busy} onClick={toggle}>{register ? 'Back to sign in' : 'New customer? Create an account'}</button>
-      {!register && <details className="demo-accounts">
-        <summary>Demo accounts</summary>
-        <p className="muted">All demo accounts share the development password set in <code>backend/seed/demoUsers.ts</code> (or <code>DEMO_PASSWORD</code>).</p>
-        <ul>{demoAccounts.map(([mail, role]) => <li key={mail}><button type="button" className="link-button" onClick={() => setEmail(mail)}>{mail}</button><span>{role}</span></li>)}</ul>
-      </details>}
     </div>
     <p className="auth-footer">Bharat Rail · Service Operations</p>
   </div>;
