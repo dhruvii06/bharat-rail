@@ -22,7 +22,7 @@ export function Overview({ user }: { user: User }) {
     ? [['My reports', items.length], ['Open', items.filter(i => !finished.includes(i.status)).length],
        ['Waiting for my answer', items.filter(i => i.informationRequest).length], ['Resolved', items.filter(i => finished.includes(i.status)).length]]
     : technician
-    ? [['Current workload', workload.data ? `${workload.data.workload} / ${workload.data.capacity}` : active.length],
+    ? [['Current workload', workload.data ? `${workload.data.workload} / ${workload.data.capacity}` : '—'],
        ['Waiting to acknowledge', active.filter(i => i.status === 'ASSIGNED').length],
        ['Critical (P1) open', active.filter(i => i.priority === 'P1').length], ['SLA breaches open', active.filter(i => i.sla === 'BREACHED').length]]
     : [['My incidents', items.length], ['Active', active.length],
@@ -37,7 +37,7 @@ export function Overview({ user }: { user: User }) {
       <div><div className="eyebrow">SERVICE OPERATIONS / OVERVIEW</div><h1>{title}</h1></div>
       {reporterRoles.includes(user.role) && <Link className="button-link" to="/incidents/new">Report incident</Link>}
     </div>
-    <ErrorNote message={incidents.error || report.error} onRetry={() => { incidents.reload(); report.reload(); }} />
+    <ErrorNote message={incidents.error || report.error || workload.error} onRetry={() => { incidents.reload(); report.reload(); workload.reload(); }} />
     <div className="metrics">{metrics.map(([label, value]) => <section key={label}><span>{label}</span><strong>{value}</strong></section>)}</div>
     {technician && workload.data && <p className="muted">
       Team: <strong>{workload.data.skill.replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase())}</strong> ·
