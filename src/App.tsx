@@ -1,4 +1,4 @@
-import { Link, NavLink, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { reporterRoles, type User } from '../shared/domain';
 import { useAuth } from './auth';
 import { Notifications } from './components/Notifications';
@@ -26,7 +26,11 @@ const roleLabel = (role: User['role']) => role === 'Manager' ? 'IT Manager' : ro
 
 function Shell({ user }: { user: User }) {
   const { signOut } = useAuth();
+  const navigate = useNavigate();
   const reporter = reporterRoles.includes(user.role);
+  const manager = user.role === 'Manager';
+  // Pages a role may not use send it home, so whoever signs in next never lands on the previous user's page.
+  const home = <Navigate to="/" replace />;
   return <>
     <header>
       <Link className="header-brand" to="/" aria-label="Bharat Rail ITSM — Home"><BrandLogo className="header-brand-logo" /></Link>
@@ -34,7 +38,7 @@ function Shell({ user }: { user: User }) {
         <ThemeToggle />
         <Notifications />
         <span className="who">{user.name}<small>{roleLabel(user.role)} · <Link to="/account" className="who-link">Change password</Link></small></span>
-        <button className="header-button" onClick={() => void signOut()}>Sign out</button>
+        <button className="header-button" onClick={() => { navigate('/', { replace: true }); void signOut(); }}>Sign out</button>
       </div>
     </header>
     <nav aria-label="Main navigation">
@@ -51,12 +55,12 @@ function Shell({ user }: { user: User }) {
       <Routes>
         <Route path="/" element={<Overview user={user} />} />
         <Route path="/incidents" element={<IncidentList user={user} />} />
-        <Route path="/incidents/new" element={reporter ? <ReportIncident /> : <p>Incidents are reported by employees and customers.</p>} />
+        <Route path="/incidents/new" element={reporter ? <ReportIncident /> : home} />
         <Route path="/account" element={<ChangePassword />} />
         <Route path="/incidents/:id" element={<IncidentDetail user={user} />} />
-        <Route path="/management" element={user.role === 'Manager' ? <Management /> : <p>This screen is for the IT manager.</p>} />
-        <Route path="/admin" element={user.role === 'Manager' ? <Admin /> : <p>This screen is for the IT manager.</p>} />
-        <Route path="/impact-simulator" element={user.role === 'Manager' ? <ImpactSimulator /> : <p>This screen is for the IT manager.</p>} />
+        <Route path="/management" element={manager ? <Management /> : home} />
+        <Route path="/admin" element={manager ? <Admin /> : home} />
+        <Route path="/impact-simulator" element={manager ? <ImpactSimulator /> : home} />
         <Route path="*" element={<><h1>Page not found</h1><Link to="/">Return to overview</Link></>} />
       </Routes>
     </main>
