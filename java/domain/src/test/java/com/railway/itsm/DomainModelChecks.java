@@ -144,6 +144,18 @@ public final class DomainModelChecks {
         var cosmetic=CustomerReportAssessment.assess(new CustomerReportAssessment.Answers(CustomerReportAssessment.Effect.MINOR,false,false));
         check(cosmetic.impact()==Impact.LOW && cosmetic.urgency()==Urgency.LOW,"cosmetic issue stays low");
         throwsException(NullPointerException.class,()->new CustomerReportAssessment.Answers(null,false,false),"customer must say how they were affected");
+        Incident escalate=incident(Impact.LOW,Urgency.LOW,false,false);
+        throwsException(InvalidTransitionException.class,()->escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN,"x",START),"priority cannot change before classification");
+        escalate.classify(priority.calculate(escalate),ADMIN,START);
+        throwsException(IllegalArgumentException.class,()->escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN," ",START),"a reason is required to change priority");
+        throwsException(IllegalArgumentException.class,()->escalate.changePriority(escalate.getPriority(),SLAPolicy.forPriority(escalate.getPriority()),ADMIN,"same",START),"changing to the same priority is refused");
+        escalate.changePriority(Priority.P1_CRITICAL,SLAPolicy.forPriority(Priority.P1_CRITICAL),ADMIN,"Affects all Tatkal bookings",START.plusSeconds(60));
+        check(escalate.getPriority()==Priority.P1_CRITICAL && escalate.getSlaPolicy().resolutionTarget().equals(Duration.ofMinutes(30))
+            && escalate.getAuditTrail().stream().anyMatch(e->e.action().equals("PRIORITY_CHANGED")),"IT manager raises priority; SLA follows; audited");
+        Technician fixer=new Technician("Fixer","fixer@example.test",Set.of(Skill.PAYMENTS),3);
+        escalate.assign(fixer,ADMIN,START);escalate.acknowledge(fixer,START);escalate.startInvestigation(fixer,START);
+        escalate.resolve(fixer,"Restarted the payment callback service","Stuck worker",START.plusSeconds(120));
+        throwsException(InvalidTransitionException.class,()->escalate.changePriority(Priority.P2_HIGH,SLAPolicy.forPriority(Priority.P2_HIGH),ADMIN,"late",START.plusSeconds(130)),"priority cannot change after resolution");
         System.out.println("TOTAL: "+count+" checks passed");
     }
 }

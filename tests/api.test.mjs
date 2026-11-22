@@ -353,3 +353,16 @@ describe('customers and first-login password change', () => {
     assert.equal((await call('POST', '/auth/change-password', { body: { currentPassword: 'a', newPassword: 'Passw0rdOK' } })).status, 401);
   });
 });
+
+describe('priority override', () => {
+  test('only the IT manager can change priority; the request is forwarded', async () => {
+    for (const email of ['emp@test.local', 'tech@test.local']) {
+      assert.equal((await call('POST', '/incidents/INC-1/priority', { token: await login(email), body: { priority: 'P1', reason: 'Affects everyone' } })).status, 403, email);
+    }
+    await call('POST', '/incidents/INC-1/priority', { token: await login('mgr@test.local'), body: { priority: 'P1', reason: 'Affects everyone' } });
+    assert.equal(lastForwarded.url, '/incidents/INC-1/priority');
+    assert.deepEqual(lastForwarded.body, { priority: 'P1', reason: 'Affects everyone' });
+    assert.equal(lastForwarded.headers['x-actor-role'], 'ADMIN');
+  });
+});
+

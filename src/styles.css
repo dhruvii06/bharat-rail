@@ -126,3 +126,6 @@ td .inline-input{display:inline-block;width:auto}
 .bubble p{margin:0 0 4px}
 .bubble .kind{font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:#91511d;font-weight:600}
 .conversation .action-form{max-width:760px;border-bottom:0}
+.priority-form summary{cursor:pointer;font-weight:500;font-size:13px}
+.priority-form summary small{display:block;color:#647182;font-weight:400}
+.priority-form[open] summary{margin-bottom:8px}

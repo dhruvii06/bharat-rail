@@ -146,6 +146,21 @@ public final class Incident {
         require(IncidentStatus.VERIFIED);
         move(IncidentStatus.CLOSED,actor,"CLOSED","Incident closed",now);
     }
+    /**
+     * The IT manager overrides the calculated priority, with a reason. Allowed while the incident is
+     * open (classified up to in progress). The new SLA policy replaces the old one; the status is unchanged.
+     */
+    public void changePriority(Priority newPriority,SLAPolicy newPolicy,Administrator actor,String reason,Instant now){
+        Objects.requireNonNull(actor,"Only the IT manager can change priority");
+        if(status==IncidentStatus.NEW||status==IncidentStatus.RESOLVED||status==IncidentStatus.VERIFIED||status==IncidentStatus.CLOSED)
+            throw new InvalidTransitionException("Priority can only be changed while the incident is open; actual "+status);
+        if(newPriority==null||newPolicy==null||newPolicy.priority()!=newPriority) throw new IllegalArgumentException("A priority and its matching SLA policy are required");
+        if(newPriority==priority) throw new IllegalArgumentException("The incident is already "+newPriority);
+        if(reason==null||reason.isBlank()) throw new IllegalArgumentException("A reason is required to change priority");
+        Priority old=priority;
+        priority=newPriority;slaPolicy=newPolicy;
+        record(actor,"PRIORITY_CHANGED",status,status,old+" -> "+newPriority+": "+reason.trim(),Objects.requireNonNull(now));
+    }
     private void requireAssignedActor(Technician actor){
         if(actor==null||assignedTechnician==null||!assignedTechnician.getId().equals(actor.getId()))
             throw new UnauthorizedIncidentOperationException("Only assigned technician can work on incident");

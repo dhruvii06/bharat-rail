@@ -340,6 +340,39 @@ public class IncidentWorkflowService {
     }
 
     /**
+     * IT manager overrides the calculated priority with a reason. Deadlines are recalculated from the
+     * incident's creation time with the configured SLA targets for the new priority, so raising the
+     * priority makes it urgent at once and lowering it cannot erase a breach already recorded.
+     */
+    public synchronized IncidentView changePriority(Actor actor, String id, String priorityText, String reason) {
+        actor.require(Actor.ADMIN, "change priority");
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+        com.irctc.itsm.model.Priority dbPriority;
+        try { dbPriority = com.irctc.itsm.model.Priority.valueOf(Objects.requireNonNullElse(priorityText, "").trim().toUpperCase(Locale.ROOT)); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Priority must be P1, P2, P3 or P4."); }
+        if (dto.getPriority() == dbPriority) throw new IllegalArgumentException("The incident is already " + dbPriority + ".");
+        String why = text(reason, "reason", 5, 500);
+        com.irctc.itsm.model.SLAPolicy configured = catalogue.findSlaByPriority(dbPriority)
+                .orElseThrow(() -> new SLAPolicyNotFoundException("No SLA policy is configured for " + dbPriority));
+        Priority newPriority = Mapping.priority(dbPriority);
+        SLAPolicy policy = new SLAPolicy(newPriority, Duration.ofMinutes(configured.getResponseTargetMins()), Duration.ofMinutes(configured.getResolutionTargetMins()));
+        Incident incident = s.restore(dto);
+        String old = dto.getPriority() == null ? "none" : dto.getPriority().name();
+        incident.changePriority(newPriority, policy, s.administrator(actor.userId()), why, clock.instant());   // domain checks state and reason
+
+        Instant created = Mapping.instant(dto.getCreatedAt());
+        dto.setPriority(dbPriority);
+        dto.setSlaId(configured.getSlaId());
+        dto.setSlaResponseDeadline(Mapping.local(created.plus(policy.responseTarget())));
+        dto.setSlaResolutionDeadline(Mapping.local(created.plus(policy.resolutionTarget())));
+        incidents.save(dto);
+        audit.save(new AuditLog(id, actor.userId(), "PRIORITY_CHANGED", dto.getStatus().name(), dto.getStatus().name(), old + " -> " + dbPriority + ": " + why));
+        publish(id, "PRIORITY_CHANGED", "Priority of " + id + " changed from " + old + " to " + dbPriority + " by " + s.userName(actor.userId()) + ": " + why);
+        return detail(actor, id);
+    }
+
+    /**
      * Conversation between the reporter and the IT team (the assigned technician, or the IT manager
      * while nobody is assigned). Unlike internal notes, messages are visible to the reporter.
      */
@@ -606,11 +639,22 @@ public class IncidentWorkflowService {
                 service == null ? null : service.getServiceName(), Mapping.score(dto.getImpact()), Mapping.score(dto.getUrgency()),
                 incident.getAffectedService().getBusinessCriticality(), s.affectedUsers(id), dto.isTatkalWindow(),
                 dto.getPriority() == null ? null : dto.getPriority().name(),
-                incident.getPriority() == null ? null : PriorityExplainer.explain(incident, incident.getPriority()),
+                priorityReason(incident, history),
                 dto.getStatus().name(), dto.getReporterId(), s.userName(dto.getReporterId()), dto.getAssignedTechnicianId(),
                 s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
                 responseDue, resolutionDue, s.resolvedAt(id), sla, incident.getInformationRequest(), incident.getInformationRequestedAt(),
                 resolution, history, actions, similar);
+    }
+
+    /** Why the incident has its priority: the rule's explanation, or the IT manager's override and its reason. */
+    private String priorityReason(Incident incident, List<HistoryView> history) {
+        if (incident.getPriority() == null) return null;
+        Priority calculated = priorityStrategy.calculate(incident);
+        if (calculated == incident.getPriority()) return PriorityExplainer.explain(incident, incident.getPriority());
+        String override = history == null ? null : history.stream().filter(h -> h.action().equals("PRIORITY_CHANGED"))
+                .reduce((a, b) -> b).map(HistoryView::description).orElse(null);
+        return "Set manually by the IT manager" + (override == null ? "" : " (" + override + ")")
+                + "; the rules give " + Mapping.priority(calculated).name();
     }
 
     /** History entries a customer may see. Internal triage (priority, assessment, duplicates, notes, SLA) is left out. */
@@ -630,6 +674,7 @@ public class IncidentWorkflowService {
         List<String> actions = new ArrayList<>();
         if (actor.isAdmin()) {
             if (status.equals("CLASSIFIED")) actions.add("ASSIGN");
+            if (Set.of("CLASSIFIED", "ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS").contains(status)) actions.add("CHANGE_PRIORITY");
             if (status.equals("VERIFIED")) actions.add("CLOSE");
         }
         if (actor.isTechnician() && Objects.equals(dto.getAssignedTechnicianId(), actor.userId())) {

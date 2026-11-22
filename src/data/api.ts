@@ -85,6 +85,8 @@ export const api = {
   transition: (id: string, action: 'ACKNOWLEDGE' | 'START' | 'RESOLVE' | 'VERIFY' | 'CLOSE', details: { summary?: string; rootCause?: string } = {}) =>
     request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/transitions`, { action, ...details }),
   note: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/notes`, { text }),
+  changePriority: (id: string, priority: string, reason: string) =>
+    request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/priority`, { priority, reason }),
   message: (id: string, text: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/messages`, { text }),
   feedback: (id: string, rating: number) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/feedback`, { rating }),
   requestInfo: (id: string, question: string) => request<Incident>('POST', `/incidents/${encodeURIComponent(id)}/info-request`, { question }),

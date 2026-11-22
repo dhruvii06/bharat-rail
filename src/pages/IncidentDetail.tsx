@@ -84,6 +84,7 @@ export function IncidentDetail({ user }: { user: User }) {
         <ErrorNote message={actionError} />
         {actions.filter(a => a !== 'NOTE' && a !== 'MESSAGE').length === 0 && <p className="muted">{customer ? 'Nothing is needed from you right now. We will notify you about any updates.' : 'No actions for you at this stage.'}</p>}
         {has('ASSIGN') && <AssignForm busy={busy} onAssign={choice => run(() => api.assign(incident.id, choice))} />}
+        {has('CHANGE_PRIORITY') && <PriorityForm current={incident.priority} busy={busy} onChange={(p, reason) => run(() => api.changePriority(incident.id, p, reason))} />}
         {has('ACKNOWLEDGE') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'ACKNOWLEDGE'))}>Acknowledge</button>}
         {has('START') && <button disabled={busy} onClick={() => run(() => api.transition(incident.id, 'START'))}>Start investigation</button>}
         {has('REQUEST_INFO') && <TextAction id="question" label="Ask the reporter for information" button="Send question" min={5} max={1000}
@@ -158,6 +159,20 @@ function FeedbackForm({ busy, onRate }: { busy: boolean; onRate: (rating: number
     <label>Rate the resolution<select id="rating" value={rating} onChange={e => setRating(Number(e.target.value))}>{[5, 4, 3, 2, 1].map(r => <option key={r} value={r}>{r} / 5</option>)}</select></label>
     <button disabled={busy} onClick={() => onRate(rating)}>Send feedback</button>
   </div>;
+}
+
+function PriorityForm({ current, busy, onChange }: { current: string | null; busy: boolean; onChange: (priority: string, reason: string) => void }) {
+  const options = ['P1', 'P2', 'P3', 'P4'].filter(p => p !== current);
+  const [priority, setPriority] = useState(options[0]);
+  // After a change the current priority moves; never leave it selected as the "new" one.
+  useEffect(() => { setPriority(p => (p === current ? options[0] : p)); }, [current]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [reason, setReason] = useState('');
+  return <details className="action-form priority-form">
+    <summary>Change priority <small>Currently {current}. The technician is notified; the reporter is not.</small></summary>
+    <label>New priority<select id="new-priority" value={priority} onChange={e => setPriority(e.target.value)}>{options.map(p => <option key={p} value={p}>{p}</option>)}</select></label>
+    <label>Reason<textarea id="priority-reason" className="short" maxLength={500} value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. Affects all Tatkal bookings, not a single user" /></label>
+    <button disabled={busy || reason.trim().length < 5} onClick={() => { onChange(priority, reason); setReason(''); }}>Change priority</button>
+  </details>;
 }
 
 function TextAction({ id, label, button, min, max, placeholder, busy, onSubmit }: {
