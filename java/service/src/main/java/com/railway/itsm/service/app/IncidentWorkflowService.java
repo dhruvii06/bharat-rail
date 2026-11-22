@@ -171,7 +171,38 @@ public class IncidentWorkflowService {
                 .mapToLong(v -> Duration.between(v.createdAt(), v.resolvedAt()).toMinutes()).average().stream().boxed().findFirst().orElse(null);
         return new Overview(all.size(), open, critical, all.size() - open, violations, compliance, avgMinutes,
                 counts(all, IncidentView::serviceName), counts(all, IncidentView::priority), counts(all, IncidentView::status),
-                technicianViews(s));
+                technicianViews(s), monthlyReported(all, now), technicianProgress(s));
+    }
+
+    /** Incidents reported per month for the last 12 months, oldest first, with empty months as 0. */
+    private List<MonthCount> monthlyReported(List<IncidentView> all, Instant now) {
+        ZoneId zone = ZoneId.systemDefault();
+        java.time.YearMonth current = java.time.YearMonth.from(now.atZone(zone));
+        Map<java.time.YearMonth, Long> byMonth = all.stream()
+                .collect(Collectors.groupingBy(v -> java.time.YearMonth.from(v.createdAt().atZone(zone)), Collectors.counting()));
+        List<MonthCount> months = new ArrayList<>();
+        for (int back = 11; back >= 0; back--) {
+            java.time.YearMonth m = current.minusMonths(back);
+            months.add(new MonthCount(m.toString(), byMonth.getOrDefault(m, 0L)));
+        }
+        return months;
+    }
+
+    /** Per technician: incidents they resolved and incidents assigned to them that are still being worked on. */
+    private List<TechnicianProgress> technicianProgress(Snapshot s) {
+        Map<Long, Long> completed = queries.resolvedCountByTechnician();
+        Map<Long, Long> ongoing = s.incidents().stream()
+                .filter(d -> d.getAssignedTechnicianId() != null && Set.of("ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS").contains(d.getStatus().name()))
+                .collect(Collectors.groupingBy(com.irctc.itsm.model.Incident::getAssignedTechnicianId, Collectors.counting()));
+        List<TechnicianProgress> list = new ArrayList<>();
+        for (Map.Entry<Long, TechnicianDetail> e : s.technicianDetails().entrySet()) {
+            long techId = e.getKey();
+            long done = completed.getOrDefault(techId, 0L), open = ongoing.getOrDefault(techId, 0L);
+            if (!s.isActive(techId) && done == 0 && open == 0) continue;   // leave out deactivated accounts with no history
+            list.add(new TechnicianProgress(techId, s.userName(techId), e.getValue().getSkillCategory(), done, open));
+        }
+        list.sort(Comparator.comparingLong((TechnicianProgress t) -> -(t.completed() + t.ongoing())).thenComparing(TechnicianProgress::name));
+        return list;
     }
 
     // =====================================================================================

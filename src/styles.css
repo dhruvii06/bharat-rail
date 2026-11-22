@@ -134,3 +134,41 @@ td .inline-input{display:inline-block;width:auto}
 .handover-answer .inline-input{flex:1 0 200px;min-width:0}
 .contributor{display:block}
 .contributor small{display:inline}
+
+/* ---- Management charts. Series colours validated (CVD ΔE ≥ 24, ≥ 3:1) on the light card and the dark surface. ---- */
+.viz{--viz-s1:#2a78d6;--viz-s2:#eb6834;--viz-grid:#e5e9ee;--viz-ink:#293746;--viz-muted:#647182;--viz-surface:#fff;
+  background:var(--viz-surface);border:1px solid var(--line);padding:16px 18px 18px;margin:18px 0}
+:root[data-theme="dark"] .viz{--viz-s1:#3987e5;--viz-s2:#d95926;--viz-grid:#2b3d52;--viz-ink:#e6edf6;--viz-muted:#b2bfd0;--viz-surface:#172538}
+.viz h2{margin:0}
+.viz-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.viz-head .muted{margin:2px 0 0}
+.viz-legend{display:flex;gap:16px;font-size:12px;color:var(--viz-ink);margin-bottom:10px}
+.viz-legend span{display:inline-flex;align-items:center;gap:6px}
+.viz-swatch{display:inline-block;width:10px;height:10px;border-radius:2px}
+.viz-swatch.s1,.viz-seg.s1{background:var(--viz-s1)}
+.viz-swatch.s2,.viz-seg.s2{background:var(--viz-s2)}
+.viz-columns{display:grid;grid-template-columns:28px 1fr;grid-template-rows:180px auto;column-gap:8px}
+.viz-yaxis{display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;font-size:11px;color:var(--viz-muted);transform:translateY(-.5em);height:calc(100% + 1em)}
+.viz-plot{position:relative;display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--viz-muted)}
+.viz-grid{position:absolute;left:0;right:0;border-top:1px solid var(--viz-grid)}
+.viz-col{position:relative;flex:1;height:100%;display:flex;align-items:flex-end;justify-content:center;outline:none;cursor:default}
+.viz-col:hover,.viz-col:focus-visible{background:color-mix(in srgb,var(--viz-s1) 8%,transparent)}
+.viz-bar{position:relative;width:min(70%,36px);background:var(--viz-s1);border-radius:4px 4px 0 0;min-height:0}
+.viz-xaxis{display:flex;gap:2px;font-size:11px;color:var(--viz-muted);padding-top:6px}
+.viz-xaxis span{flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:clip}
+.viz-tip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:3;pointer-events:none;white-space:nowrap;
+  background:var(--viz-surface);color:var(--viz-ink);border:1px solid var(--line);box-shadow:0 4px 14px rgba(8,20,35,.14);padding:6px 9px;font-size:12px}
+.viz-col .viz-tip{bottom:auto;top:8px}
+.viz-tip strong{display:block;font-weight:600}
+.viz-rows{display:grid;gap:10px}
+.viz-row{display:grid;grid-template-columns:minmax(110px,190px) 1fr auto;gap:12px;align-items:center}
+.viz-row-label{font-size:13px;color:var(--viz-ink);overflow:hidden;text-overflow:ellipsis}
+.viz-row-label small{display:block;color:var(--viz-muted);font-size:11px}
+.viz-track{display:flex;align-items:center;gap:2px;min-height:22px}
+.viz-seg{position:relative;flex:none;height:18px;min-width:4px;outline:none}
+.viz-seg:first-child{border-radius:4px 0 0 4px}
+.viz-seg:last-child{border-radius:0 4px 4px 0}
+.viz-seg:only-child{border-radius:4px}
+.viz-seg:hover,.viz-seg:focus-visible{filter:brightness(1.1);box-shadow:0 0 0 2px var(--viz-surface),0 0 0 3px var(--viz-ink)}
+.viz-value{font-size:12px;color:var(--viz-muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:640px){.viz-row{grid-template-columns:1fr auto}.viz-row-label{grid-column:1 / -1}.viz-xaxis span:nth-child(even){visibility:hidden}}

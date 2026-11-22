@@ -62,5 +62,11 @@ public final class Views {
     public record Overview(long total, long open, long critical, long resolved, long slaViolations,
                            Integer slaCompliancePercent, Double averageResolutionMinutes,
                            List<Count> byService, List<Count> byPriority, List<Count> byStatus,
-                           List<TechnicianView> workload) {}
+                           List<TechnicianView> workload, List<MonthCount> monthly, List<TechnicianProgress> technicianProgress) {}
+
+    /** Incidents reported in one calendar month; {@code month} is YYYY-MM. */
+    public record MonthCount(String month, long count) {}
+
+    /** One technician's record: incidents they resolved, and incidents assigned to them that are still open. */
+    public record TechnicianProgress(long id, String name, String team, long completed, long ongoing) {}
 }

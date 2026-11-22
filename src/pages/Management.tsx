@@ -2,6 +2,7 @@ import type { Count } from '../../shared/domain';
 import { useLoad } from '../auth';
 import { ErrorNote, formatDate, humanize } from '../components/ui';
 import { api } from '../data/api';
+import { MonthlyReportedChart, TechnicianProgressChart } from '../components/Charts';
 
 /** IT manager: technician workload, incident analysis and the simulated email channel. */
 export function Management() {
@@ -12,6 +13,9 @@ export function Management() {
   return <>
     <div className="page-heading"><div><div className="eyebrow">ADMINISTRATION</div><h1>Management</h1></div></div>
     <ErrorNote message={overview.error || outbox.error} onRetry={() => { overview.reload(); outbox.reload(); }} />
+
+    {o && <MonthlyReportedChart data={o.monthly} />}
+    {o && <TechnicianProgressChart data={o.technicianProgress} />}
 
     <h2>Technician workload</h2>
     <div className="table-wrap"><table>

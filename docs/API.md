@@ -50,7 +50,7 @@ Send `Authorization: Bearer <token>` on every other call.
 | GET | `/notifications` | all | In-app channel: `{items, unread}` |
 | POST | `/notifications/:id/read`, `/notifications/read-all` | all | Mark read → 204 |
 | GET | `/notifications/outbox` | Manager | Simulated email channel |
-| GET | `/reports/overview` | Manager | Totals, SLA compliance, average resolution time, by service / priority / status, workload |
+| GET | `/reports/overview` | Manager | Totals, SLA compliance, average resolution time, by service / priority / status, workload; `monthly` (incidents reported per month, last 12 months, oldest first, `{month: YYYY-MM, count}`) and `technicianProgress` (`{id, name, team, completed, ongoing}`: incidents each technician resolved, and those assigned to them still open), shown as charts on the Management page |
 | GET | `/audit` | Manager | Audit trail across all incidents, newest first. Optional filters: `q` (text in the entry or incident title), `action`, `incidentId`, `userId`, `from` / `to` (dates, inclusive), `limit` (1–500, default 200) |
 
 ## Customer view
