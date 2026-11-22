@@ -105,7 +105,7 @@ function Technicians() {
     if (await run(() => api.admin.saveTechnician(id, profile), `${label} updated.`)) technicians.reload();
   };
   return <>
-    <p className="muted">A technician's team decides which categories the skill-based strategy sends them (see the Categories tab). Unavailable technicians get no new incidents. To add a technician, create an account with the Technician role on the Users tab.</p>
+    <p className="muted">Assignments follow team expertise and availability. Add technician accounts under Users.</p>
     {status}
     <ErrorNote message={technicians.error} onRetry={technicians.reload} />
     <div className="table-wrap"><table>
@@ -150,7 +150,7 @@ function Services() {
       <button disabled={busy}>Add service</button>
     </form>
     {status}
-    <p className="muted">Criticality feeds the priority formula: Critical counts 3, High 2, Medium and Low 1. During the Tatkal window, a high-impact, high-urgency incident is raised to P1 only on services Tatkal bookings depend on.</p>
+    <p className="muted">Service criticality influences incident priority. Enable the Tatkal booking path only for services needed to complete Tatkal bookings.</p>
     <div className="table-wrap"><table>
       <thead><tr><th>Service</th><th>Category</th><th>Business criticality</th><th>Tatkal booking path</th></tr></thead>
       <tbody>{services.data?.map(s => <tr key={s.id}>
