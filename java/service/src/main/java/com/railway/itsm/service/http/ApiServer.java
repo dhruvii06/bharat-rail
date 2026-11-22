@@ -76,6 +76,12 @@ public final class ApiServer {
         route("POST", "/incidents/{id}/priority", 200, r -> workflow.changePriority(r.actor(), r.id(), r.text("priority"), r.text("reason")));
         route("POST", "/incidents/{id}/feedback", 200, r -> workflow.feedback(r.actor(), r.id(), r.integer("rating")));
         route("GET", "/incidents/{id}/similar", 200, r -> workflow.similar(r.actor(), r.id()));
+        route("GET", "/incidents/{id}/colleagues", 200, r -> workflow.colleagues(r.actor(), r.id()));
+        route("POST", "/incidents/{id}/handover", 200, r -> workflow.requestHandover(r.actor(), r.id(), r.number("technicianId"), r.text("reason")));
+        route("POST", "/incidents/{id}/handover/accept", 200, r -> workflow.acceptHandover(r.actor(), r.id()));
+        route("POST", "/incidents/{id}/handover/decline", 200, r -> workflow.declineHandover(r.actor(), r.id(), r.text("reason")));
+        route("POST", "/incidents/{id}/handover/withdraw", 200, r -> workflow.withdrawHandover(r.actor(), r.id()));
+        route("POST", "/incidents/{id}/handoff", 200, r -> workflow.handOff(r.actor(), r.id(), r.number("technicianId"), r.text("team"), r.text("workDone")));
         route("POST", "/incidents/{id}/info-request", 200, r -> workflow.requestInformation(r.actor(), r.id(), r.text("question")));
         route("POST", "/incidents/{id}/info-response", 200, r -> workflow.provideInformation(r.actor(), r.id(), r.text("answer")));
         route("GET", "/services", 200, r -> workflow.services());

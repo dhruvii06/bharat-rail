@@ -13,6 +13,8 @@ import com.railway.itsm.application.IncidentManagementService;
 import com.railway.itsm.domain.enums.Impact;
 import com.irctc.itsm.repository.impl.DatabaseConnection;
 import com.railway.itsm.domain.enums.IncidentCategory;
+import com.railway.itsm.domain.enums.Skill;
+import com.railway.itsm.domain.exceptions.NoTechnicianAvailableException;
 import com.railway.itsm.domain.enums.IncidentStatus;
 import com.railway.itsm.domain.enums.Priority;
 import com.railway.itsm.domain.enums.Urgency;
@@ -89,7 +91,7 @@ public class IncidentWorkflowService {
         LocalDate from = date(filters.get("from")), to = date(filters.get("to"));
         List<IncidentView> result = new ArrayList<>();
         for (com.irctc.itsm.model.Incident dto : s.incidents()) {
-            if (!canSee(actor, dto)) continue;
+            if (!canSee(s, actor, dto)) continue;
             IncidentView v = view(s, dto, actor, now, false);
             if (!q.isEmpty() && !(v.id() + " " + v.title() + " " + v.description()).toLowerCase(Locale.ROOT).contains(q)) continue;
             boolean triage = !actor.isCustomer();
@@ -439,6 +441,174 @@ public class IncidentWorkflowService {
 
     private static String blankToNull(String text) { return text == null || text.isBlank() ? null : text.trim(); }
 
+    // =====================================================================================
+    // Technicians sharing work: hand over to a colleague, hand off part-done work to another team,
+    // or hand back to the IT manager. The domain (Incident) decides who may do what and when.
+    // =====================================================================================
+
+    /** Colleagues the assigned technician can hand this incident to: available, active technicians other than themself. */
+    public List<ColleagueView> colleagues(Actor actor, String id) {
+        actor.require(Actor.TECHNICIAN, "hand over incidents");
+        Snapshot s = snapshot();
+        com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+        if (!Objects.equals(dto.getAssignedTechnicianId(), actor.userId())) throw new SecurityException("Only the assigned technician can hand this incident over.");
+        List<ColleagueView> list = new ArrayList<>();
+        for (Map.Entry<Long, TechnicianDetail> e : s.technicianDetails().entrySet()) {
+            long techId = e.getKey();
+            if (techId == actor.userId() || !s.isActive(techId)) continue;
+            TechnicianDetail d = e.getValue();
+            Technician t = s.technician(techId, 0);
+            list.add(new ColleagueView(techId, s.userName(techId), d.getSkillCategory(), d.getCurrentWorkload(), Snapshot.TECHNICIAN_CAPACITY, t.isAvailable()));
+        }
+        list.sort(Comparator.comparing(ColleagueView::team).thenComparingInt(ColleagueView::workload).thenComparing(ColleagueView::name));
+        return list;
+    }
+
+    /**
+     * The assigned technician asks a colleague to take over, or (with no colleague) hands the incident
+     * back to the IT manager. A request waits for the colleague; handing back is immediate.
+     */
+    public synchronized IncidentView requestHandover(Actor actor, String id, Long colleagueId, String reason) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "hand over incidents");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            String why = text(reason, "reason", 5, 500);
+            Incident incident = s.restore(dto);
+            Technician me = assigneeOrThrow(s, actor, incident);
+            Instant now = clock.instant();
+            if (colleagueId == null) {
+                incident.handBack(me, why, now);
+                queries.transferAssignment(id, actor.userId(), null, "CLASSIFIED");
+                queries.addContributor(id, actor.userId(), "HANDED_BACK", why);
+                audit.save(new AuditLog(id, actor.userId(), "HANDED_BACK", dto.getStatus().name(), "CLASSIFIED", "Returned to the IT manager: " + why));
+                publish(id, "HANDED_BACK", s.userName(actor.userId()) + " handed " + id + " back to be reassigned: " + why);
+                return detail(actor, id);
+            }
+            if (!s.technicianDetails().containsKey(colleagueId) || !s.isActive(colleagueId))
+                throw new IllegalArgumentException("Choose an active technician to hand over to.");
+            incident.requestHandover(me, s.technician(colleagueId, 0), why, now);
+            queries.requestHandover(id, colleagueId, why, now);
+            audit.save(new AuditLog(id, actor.userId(), "HANDOVER_REQUESTED", dto.getStatus().name(), dto.getStatus().name(),
+                    "Asked " + s.userName(colleagueId) + " to take over: " + why));
+            publish(id, "HANDOVER_REQUESTED", s.userName(actor.userId()) + " asks you to take over " + id + " (" + dto.getTitle() + "): " + why);
+            return detail(actor, id);
+        });
+    }
+
+    /** The colleague who was asked declines; the incident stays with the requester and is no longer visible to them. */
+    public synchronized HandoverDeclinedView declineHandover(Actor actor, String id, String reason) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "answer hand-overs");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            String why = reason == null || reason.isBlank() ? null : text(reason, "reason", 2, 500);
+            incident.declineHandover(s.technician(actor.userId(), 0), why, clock.instant());
+            queries.clearHandover(id);
+            audit.save(new AuditLog(id, actor.userId(), "HANDOVER_DECLINED", dto.getStatus().name(), dto.getStatus().name(),
+                    "Declined" + (why == null ? "" : ": " + why)));
+            publish(id, "HANDOVER_DECLINED", s.userName(actor.userId()) + " declined to take over " + id + (why == null ? "" : ": " + why));
+            return new HandoverDeclinedView(id, "You declined the hand-over. " + id + " stays with " + s.userName(dto.getAssignedTechnicianId()) + ".");
+        });
+    }
+
+    /** The colleague who was asked accepts: the incident and the workload move to them. */
+    public synchronized IncidentView acceptHandover(Actor actor, String id) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "answer hand-overs");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            Instant now = clock.instant();
+            Long from = dto.getAssignedTechnicianId();
+            String why = s.handoverReason(id);
+            incident.acceptHandover(s.technician(actor.userId(), 0), now);   // domain checks the target, the state and capacity
+            queries.transferAssignment(id, from, actor.userId(), "ASSIGNED");
+            queries.addContributor(id, from, "HANDED_OVER", why);
+            audit.save(new AuditLog(id, actor.userId(), "HANDOVER_ACCEPTED", dto.getStatus().name(), "ASSIGNED", "Took over from " + s.userName(from)));
+            publish(id, "HANDOVER_ACCEPTED", s.userName(actor.userId()) + " accepted your hand-over of " + id);
+            publish(id, "SPECIALIST_CHANGED", "Another specialist from our IT team is now handling " + id + ".");
+            return detail(actor, id);
+        });
+    }
+
+    /** The requester withdraws a hand-over before the colleague answers. */
+    public synchronized IncidentView withdrawHandover(Actor actor, String id) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "hand over incidents");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            Incident incident = s.restore(dto);
+            Long target = s.handoverTarget(id);
+            incident.withdrawHandover(assigneeOrThrow(s, actor, incident), clock.instant());
+            publish(id, "HANDOVER_WITHDRAWN", s.userName(actor.userId()) + " withdrew the hand-over request for " + id);   // before clearing, so the colleague hears
+            queries.clearHandover(id);
+            audit.save(new AuditLog(id, actor.userId(), "HANDOVER_WITHDRAWN", dto.getStatus().name(), dto.getStatus().name(),
+                    "Withdrew the request to " + s.userName(target)));
+            return detail(actor, id);
+        });
+    }
+
+    /**
+     * For work that needs two teams: the technician records the part they finished and passes the rest on,
+     * either to a named technician or to a team, where the available member with the fewest active
+     * incidents is chosen. The new technician acknowledges and continues; deadlines do not change.
+     */
+    public synchronized IncidentView handOff(Actor actor, String id, Long technicianId, String team, String workDone) {
+        return DatabaseConnection.inTransaction(() -> {
+            actor.require(Actor.TECHNICIAN, "hand off incidents");
+            Snapshot s = snapshot();
+            com.irctc.itsm.model.Incident dto = visible(s, actor, id);
+            String done = text(workDone, "work done so far", 10, 2000);
+            Incident incident = s.restore(dto);
+            Technician me = assigneeOrThrow(s, actor, incident);
+            long nextId;
+            if (technicianId != null) {
+                if (!s.technicianDetails().containsKey(technicianId) || !s.isActive(technicianId))
+                    throw new IllegalArgumentException("Choose an active technician to hand off to.");
+                nextId = technicianId;
+            } else {
+                if (team == null || team.isBlank()) throw new IllegalArgumentException("Choose the team or the technician to hand off to.");
+                Skill skill = Mapping.skill(team);
+                nextId = s.technicianDetails().entrySet().stream()
+                        .filter(e -> e.getKey() != actor.userId() && s.isActive(e.getKey()))
+                        .filter(e -> Mapping.skill(e.getValue().getSkillCategory()) == skill)
+                        .filter(e -> s.technician(e.getKey(), 0).isAvailable())
+                        .min(Comparator.comparingInt((Map.Entry<Long, TechnicianDetail> e) -> e.getValue().getCurrentWorkload())
+                                .thenComparing(e -> -e.getValue().getExperienceYears()))
+                        .map(Map.Entry::getKey)
+                        .orElseThrow(() -> new NoTechnicianAvailableException("No technician in that team is available right now"));
+            }
+            incident.handOff(me, s.technician(nextId, 0), done, clock.instant());   // domain checks state, note and capacity
+            queries.transferAssignment(id, actor.userId(), nextId, "ASSIGNED");
+            queries.addContributor(id, actor.userId(), "HANDED_OFF", done);
+            audit.save(new AuditLog(id, actor.userId(), "HANDED_OFF", dto.getStatus().name(), "ASSIGNED",
+                    "To " + s.userName(nextId) + ". Done so far: " + done));
+            publish(id, "HANDED_OFF", s.userName(actor.userId()) + " handed " + id + " (" + dto.getTitle() + ") to you. Done so far: " + done);
+            publish(id, "SPECIALIST_CHANGED", "Another specialist from our IT team is now handling " + id + ".");
+            return detail(actor, id);
+        });
+    }
+
+    private Technician assigneeOrThrow(Snapshot s, Actor actor, Incident incident) {
+        if (incident.getAssignedTechnician() == null || !Objects.equals(incident.getAssignedTechnician().getId(), Ids.user(actor.userId())))
+            throw new SecurityException("Only the assigned technician can hand this incident over.");
+        return incident.getAssignedTechnician();
+    }
+
+    private static HandoverView handoverView(Snapshot s, com.irctc.itsm.model.Incident dto) {
+        String id = dto.getIncidentId();
+        Long to = s.handoverTarget(id);
+        if (to == null) return null;
+        return new HandoverView(dto.getAssignedTechnicianId(), s.userName(dto.getAssignedTechnicianId()), to, s.userName(to),
+                s.handoverReason(id), s.handoverRequestedAt(id));
+    }
+
+    private static List<ContributorView> contributorViews(Snapshot s, String id) {
+        return s.contributors(id).stream().map(c -> new ContributorView(c.technicianId(), s.userName(c.technicianId()), c.passedOn(), c.note(), c.at())).toList();
+    }
+
     public synchronized IncidentView changePriority(Actor actor, String id, String priorityText, String reason) {
         return DatabaseConnection.inTransaction(() -> {
             actor.require(Actor.ADMIN, "change priority");
@@ -716,14 +886,18 @@ public class IncidentWorkflowService {
         events.publish(new IncidentEvent(Ids.incident(incidentId), type, message, clock.instant()));
     }
 
-    private boolean canSee(Actor actor, com.irctc.itsm.model.Incident dto) {
+    /** Technicians see what is assigned to them, hand-overs waiting for their answer, and incidents they worked on earlier. */
+    private boolean canSee(Snapshot s, Actor actor, com.irctc.itsm.model.Incident dto) {
         if (actor.isAdmin()) return true;
         if (actor.isReporter()) return Objects.equals(dto.getReporterId(), actor.userId());
-        return Objects.equals(dto.getAssignedTechnicianId(), actor.userId());
+        String id = dto.getIncidentId();
+        return Objects.equals(dto.getAssignedTechnicianId(), actor.userId())
+                || Objects.equals(s.handoverTarget(id), actor.userId())
+                || s.contributors(id).stream().anyMatch(c -> c.technicianId() == actor.userId());
     }
 
     private com.irctc.itsm.model.Incident visible(Snapshot s, Actor actor, String id) {
-        return s.incident(id).filter(d -> canSee(actor, d))
+        return s.incident(id).filter(d -> canSee(s, actor, d))
                 .orElseThrow(() -> new NotFoundException("Incident " + id + " was not found or is not visible to you."));
     }
 
@@ -759,7 +933,7 @@ public class IncidentWorkflowService {
             history = audit.findByIncidentId(id).stream().map(a -> new HistoryView(Mapping.instant(a.getTimestamp()), a.getPerformedByUserId(),
                     a.getPerformedByUserId() == null ? "System" : s.userName(a.getPerformedByUserId()), a.getAction(),
                     a.getPreviousState(), a.getNewState(), a.getDescription())).toList();
-            actions = allowedActions(actor, dto, resolution, incident.isAwaitingInformation());
+            actions = allowedActions(s, actor, dto, resolution, incident.isAwaitingInformation());
             similar = actor.isReporter() ? List.of() : similarTo(s, incident);
         }
         if (actor.isCustomer()) {
@@ -771,7 +945,7 @@ public class IncidentWorkflowService {
                     dto.getStatus().name(), dto.getReporterId(), s.userName(dto.getReporterId()), dto.getAssignedTechnicianId(),
                     s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
                     null, null, s.resolvedAt(id), "NONE", incident.getInformationRequest(), incident.getInformationRequestedAt(),
-                    resolution, history, actions, similar);
+                    resolution, history, actions, similar, null, List.of());
         }
         return new IncidentView(id, dto.getTitle(), dto.getDescription(), dto.getCategory(), dto.getServiceId(),
                 service == null ? null : service.getServiceName(), Mapping.score(dto.getImpact()), Mapping.score(dto.getUrgency()),
@@ -781,7 +955,7 @@ public class IncidentWorkflowService {
                 dto.getStatus().name(), dto.getReporterId(), s.userName(dto.getReporterId()), dto.getAssignedTechnicianId(),
                 s.userName(dto.getAssignedTechnicianId()), Mapping.instant(dto.getCreatedAt()), s.acknowledgedAt(id),
                 responseDue, resolutionDue, s.resolvedAt(id), sla, incident.getInformationRequest(), incident.getInformationRequestedAt(),
-                resolution, history, actions, similar);
+                resolution, history, actions, similar, handoverView(s, dto), contributorViews(s, id));
     }
 
     /** Why the incident has its priority: the rule's explanation, or the IT manager's override and its reason. */
@@ -797,17 +971,20 @@ public class IncidentWorkflowService {
 
     /** History entries a customer may see. Internal triage (priority, assessment, duplicates, notes, SLA) is left out. */
     private static final Set<String> CUSTOMER_VISIBLE = Set.of("INCIDENT_CREATED", "TECHNICIAN_ASSIGNED", "STATUS_CHANGED",
-            "INCIDENT_RESOLVED", "INFO_REQUESTED", "INFO_PROVIDED", "MESSAGE", "FEEDBACK", "INCIDENT_EDITED");
+            "INCIDENT_RESOLVED", "INFO_REQUESTED", "INFO_PROVIDED", "MESSAGE", "FEEDBACK", "INCIDENT_EDITED",
+            "HANDOVER_ACCEPTED", "HANDED_OFF");
 
     private static List<HistoryView> customerHistory(List<HistoryView> history, Snapshot s) {
         return history.stream().filter(h -> CUSTOMER_VISIBLE.contains(h.action()))
                 .map(h -> h.action().equals("TECHNICIAN_ASSIGNED")
                         ? new HistoryView(h.at(), h.actorId(), h.actorName(), h.action(), h.fromStatus(), h.toStatus(), "An IT team member was assigned to help you")
+                        : h.action().equals("HANDOVER_ACCEPTED") || h.action().equals("HANDED_OFF")
+                        ? new HistoryView(h.at(), null, "IT team", "SPECIALIST_CHANGED", h.fromStatus(), h.toStatus(), "Another specialist from our IT team is now handling your request")
                         : h)
                 .toList();
     }
 
-    private List<String> allowedActions(Actor actor, com.irctc.itsm.model.Incident dto, ResolutionView resolution, boolean waiting) {
+    private List<String> allowedActions(Snapshot s, Actor actor, com.irctc.itsm.model.Incident dto, ResolutionView resolution, boolean waiting) {
         String status = dto.getStatus().name();
         List<String> actions = new ArrayList<>();
         if (actor.isAdmin()) {
@@ -823,6 +1000,15 @@ public class IncidentWorkflowService {
                 default -> { }
             }
             if (!waiting && (status.equals("ACKNOWLEDGED") || status.equals("IN_PROGRESS"))) actions.add("REQUEST_INFO");
+            boolean open = Set.of("ASSIGNED", "ACKNOWLEDGED", "IN_PROGRESS").contains(status);
+            boolean pending = s.handoverTarget(dto.getIncidentId()) != null;
+            if (open && !pending) actions.add("HANDOVER");
+            if (!pending && (status.equals("ACKNOWLEDGED") || status.equals("IN_PROGRESS"))) actions.add("HANDOFF");
+            if (pending) actions.add("WITHDRAW_HANDOVER");
+        }
+        if (actor.isTechnician() && Objects.equals(s.handoverTarget(dto.getIncidentId()), actor.userId())) {
+            actions.add("ACCEPT_HANDOVER");
+            actions.add("DECLINE_HANDOVER");
         }
         if (actor.isReporter() && Objects.equals(dto.getReporterId(), actor.userId())) {
             if (waiting) actions.add("PROVIDE_INFO");

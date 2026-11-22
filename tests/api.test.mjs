@@ -169,6 +169,13 @@ describe('authorization', () => {
     assert.equal((await call('PATCH', '/incidents/INC1', { token: await login('tech@test.local'), body: { title: 'Changed title' } })).status, 403);
   });
 
+  test('only technicians can hand incidents over or off', async () => {
+    const emp = await login('emp@test.local'), mgr = await login('mgr@test.local');
+    assert.equal((await call('POST', '/incidents/INC1/handover', { token: emp, body: { reason: 'Not mine' } })).status, 403);
+    assert.equal((await call('POST', '/incidents/INC1/handoff', { token: mgr, body: { team: 'DATABASE', workDone: 'Half done' } })).status, 403);
+    assert.equal((await call('POST', '/incidents/INC1/handover/accept', { token: emp })).status, 403);
+  });
+
   test('only the IT manager can add categories', async () => {
     assert.equal((await call('POST', '/admin/categories', { token: await login('emp@test.local'), body: { label: 'Mobile app', team: 'APPLICATION' } })).status, 403);
   });

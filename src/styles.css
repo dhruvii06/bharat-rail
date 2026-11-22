@@ -129,3 +129,8 @@ td .inline-input{display:inline-block;width:auto}
 .priority-form summary{cursor:pointer;font-weight:500;font-size:13px}
 .priority-form summary small{display:block;color:#647182;font-weight:400}
 .priority-form[open] summary{margin-bottom:8px}
+.handover-box small{display:block;margin-top:4px}
+.handover-box .handover-answer{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.handover-answer .inline-input{flex:1 0 200px;min-width:0}
+.contributor{display:block}
+.contributor small{display:inline}

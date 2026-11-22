@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import { delimiter } from 'node:path';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
-const suites = ['admin', 'customer', 'priority', 'review-fixes'];
+const suites = ['admin', 'customer', 'priority', 'review-fixes', 'handover'];
 const failed = [];
 
 const health = await fetch((process.env.E2E_API ?? 'http://127.0.0.1:3001/api/v1') + '/health').catch(() => null);

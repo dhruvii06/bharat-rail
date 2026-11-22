@@ -1,6 +1,7 @@
 package com.railway.itsm.domain.model;
 import com.railway.itsm.domain.enums.*;
 import com.railway.itsm.domain.exceptions.InvalidTransitionException;
+import com.railway.itsm.domain.exceptions.TechnicianUnavailableException;
 import com.railway.itsm.domain.exceptions.UnauthorizedIncidentOperationException;
 import java.time.Instant;
 import java.util.*;
@@ -27,6 +28,10 @@ public final class Incident {
     private Resolution resolution;
     private String informationRequest;
     private Instant informationRequestedAt;
+    private TransferRequest pendingHandover;
+    private final List<Technician> contributors=new ArrayList<>();
+    /** A hand-over the assigned technician has asked a colleague to accept. */
+    public record TransferRequest(Technician from,Technician to,String reason,Instant requestedAt){}
     public Incident(String title,String description,Reporter reporter,RailwayService affectedService,
                     IncidentCategory category,Impact impact,Urgency urgency,int affectedUsers,
                     boolean criticalSecurityIncident,boolean peakTatkalIncident,Instant createdAt){
@@ -104,7 +109,8 @@ public final class Incident {
     }
     public void acknowledge(Technician actor,Instant now){
         requireAssignedActor(actor);require(IncidentStatus.ASSIGNED);
-        acknowledgedAt=Objects.requireNonNull(now);
+        Objects.requireNonNull(now);
+        if(acknowledgedAt==null)acknowledgedAt=now;   // the first response counts for the SLA, even after a hand-over
         move(IncidentStatus.ACKNOWLEDGED,actor,"ACKNOWLEDGED","Acknowledged",now);
     }
     public void startInvestigation(Technician actor,Instant now){
@@ -196,6 +202,95 @@ public final class Incident {
         if(recategorised){category=newCategory;criticalSecurityIncident=newCategory.isSecurity();}
         record(actor,"EDITED",status,status,details,Objects.requireNonNull(now));
     }
+    // ---- Technicians sharing work ----
+
+    /**
+     * The assigned technician asks a colleague to take the incident over ("I can't do this one").
+     * Nothing moves until the colleague accepts; the SLA deadlines never change.
+     */
+    public void requestHandover(Technician actor,Technician colleague,String reason,Instant now){
+        requireAssignedActor(actor);requireOpenWork();requireNoPendingHandover();
+        if(reason==null||reason.isBlank()) throw new IllegalArgumentException("Say why you are handing the incident over");
+        Objects.requireNonNull(colleague,"colleague");
+        if(colleague.getId().equals(actor.getId())) throw new IllegalArgumentException("Choose a colleague, not yourself");
+        if(!colleague.isAvailable()) throw new TechnicianUnavailableException(colleague.getName()+" is unavailable or at capacity");
+        pendingHandover=new TransferRequest(actor,colleague,reason.trim(),Objects.requireNonNull(now));
+        record(actor,"HANDOVER_REQUESTED",status,status,"Asked "+colleague.getName()+" to take over: "+reason.trim(),now);
+    }
+
+    /** The colleague accepts: the incident and the workload move to them, and they must acknowledge it. */
+    public void acceptHandover(Technician actor,Instant now){
+        requireHandoverTarget(actor);requireOpenWork();
+        Technician previous=assignedTechnician;
+        actor.takeIncident();
+        if(previous.getActiveIncidents()>0)previous.finishIncident();
+        contributors.add(previous);
+        assignedTechnician=actor;pendingHandover=null;
+        move(IncidentStatus.ASSIGNED,actor,"HANDOVER_ACCEPTED","Took over from "+previous.getName(),now);
+    }
+
+    public void declineHandover(Technician actor,String reason,Instant now){
+        requireHandoverTarget(actor);
+        String why=reason==null||reason.isBlank()?"no reason given":reason.trim();
+        pendingHandover=null;
+        record(actor,"HANDOVER_DECLINED",status,status,"Declined: "+why,Objects.requireNonNull(now));
+    }
+
+    /** The requester changes their mind before the colleague answers. */
+    public void withdrawHandover(Technician actor,Instant now){
+        requireAssignedActor(actor);
+        if(pendingHandover==null) throw new InvalidTransitionException("There is no hand-over to withdraw");
+        String to=pendingHandover.to().getName();
+        pendingHandover=null;
+        record(actor,"HANDOVER_WITHDRAWN",status,status,"Withdrew the request to "+to,Objects.requireNonNull(now));
+    }
+
+    /** The technician returns the incident to the IT manager, who assigns it again. */
+    public void handBack(Technician actor,String reason,Instant now){
+        requireAssignedActor(actor);requireOpenWork();requireNoPendingHandover();
+        if(reason==null||reason.isBlank()) throw new IllegalArgumentException("Say why you are handing the incident back");
+        if(actor.getActiveIncidents()>0)actor.finishIncident();
+        contributors.add(actor);assignedTechnician=null;
+        move(IncidentStatus.CLASSIFIED,actor,"HANDED_BACK","Returned to the IT manager: "+reason.trim(),now);
+    }
+
+    /**
+     * For incidents that need two teams: the technician records the part they finished and passes the
+     * rest to a technician of another team, who acknowledges and continues. Only after work has started.
+     */
+    public void handOff(Technician actor,Technician next,String workDone,Instant now){
+        requireAssignedActor(actor);requireNoPendingHandover();
+        if(status!=IncidentStatus.ACKNOWLEDGED&&status!=IncidentStatus.IN_PROGRESS)
+            throw new InvalidTransitionException("Acknowledge the incident and do your part before handing it off; actual "+status);
+        if(workDone==null||workDone.isBlank()) throw new IllegalArgumentException("Describe the part you have finished");
+        Objects.requireNonNull(next,"next");
+        if(next.getId().equals(actor.getId())) throw new IllegalArgumentException("Hand off to a technician of another team");
+        next.takeIncident();
+        if(actor.getActiveIncidents()>0)actor.finishIncident();
+        contributors.add(actor);assignedTechnician=next;
+        move(IncidentStatus.ASSIGNED,actor,"HANDED_OFF","To "+next.getName()+". Done so far: "+workDone.trim(),now);
+    }
+
+    /** Used by the persistence adapter to restore an open hand-over request and earlier assignees. */
+    public void restoreCollaboration(TransferRequest pending,List<Technician> earlierAssignees){
+        this.pendingHandover=pending;
+        this.contributors.clear();
+        if(earlierAssignees!=null)this.contributors.addAll(earlierAssignees);
+    }
+
+    private void requireOpenWork(){
+        if(status!=IncidentStatus.ASSIGNED&&status!=IncidentStatus.ACKNOWLEDGED&&status!=IncidentStatus.IN_PROGRESS)
+            throw new InvalidTransitionException("Only incidents being worked on can be handed over; actual "+status);
+    }
+    private void requireNoPendingHandover(){
+        if(pendingHandover!=null) throw new InvalidTransitionException("A hand-over to "+pendingHandover.to().getName()+" is still waiting for an answer");
+    }
+    private void requireHandoverTarget(Technician actor){
+        if(pendingHandover==null) throw new InvalidTransitionException("There is no hand-over waiting");
+        if(actor==null||!pendingHandover.to().getId().equals(actor.getId()))
+            throw new UnauthorizedIncidentOperationException("Only the colleague who was asked can answer this hand-over");
+    }
+
     private void requireAssignedActor(Technician actor){
         if(actor==null||assignedTechnician==null||!assignedTechnician.getId().equals(actor.getId()))
             throw new UnauthorizedIncidentOperationException("Only assigned technician can work on incident");
@@ -226,6 +321,9 @@ public final class Incident {
     public Priority getPriority(){return priority;}
     public SLAPolicy getSlaPolicy(){return slaPolicy;}
     public Technician getAssignedTechnician(){return assignedTechnician;}
+    public TransferRequest getPendingHandover(){return pendingHandover;}
+    /** Technicians who worked on the incident before the current assignee, oldest first. */
+    public List<Technician> getContributors(){return List.copyOf(contributors);}
     public Instant getAcknowledgedAt(){return acknowledgedAt;}
     public Instant getResolvedAt(){return resolvedAt;}
     public Resolution getResolution(){return resolution;}

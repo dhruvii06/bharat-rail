@@ -37,6 +37,12 @@ Send `Authorization: Bearer <token>` on every other call.
 | POST | `/incidents/:id/messages` | Reporter, assigned technician, IT manager | `{text}`; conversation between the reporter and the IT team, visible to both. Notifies the assigned technician (or the IT manager while unassigned) or the reporter (in-app and email). Not allowed once closed |
 | POST | `/incidents/:id/feedback` | Employee (reporter) | `{rating: 1-5}` once the incident is resolved |
 | GET | `/incidents/:id/similar` | Technician, Manager | Possible duplicates |
+| GET | `/incidents/:id/colleagues` | Technician (assigned) | Technicians the assignee can hand over to: `{id, name, team, workload, capacity, available}` |
+| POST | `/incidents/:id/handover` | Technician (assigned) | `{technicianId, reason}` asks a colleague to take the incident over; nothing moves until they accept. Without `technicianId` the incident goes back to the IT manager (status CLASSIFIED) to be reassigned. One open request at a time (409 otherwise); reason 5–500 characters |
+| POST | `/incidents/:id/handover/accept` | Technician (asked) | The incident and its workload move to the colleague; status returns to ASSIGNED and they acknowledge it. The first acknowledgement time and the SLA deadlines are kept |
+| POST | `/incidents/:id/handover/decline` | Technician (asked) | `{reason?}`. Returns `{id, message}`: the incident stays with the requester and is no longer visible to the decliner |
+| POST | `/incidents/:id/handover/withdraw` | Technician (assigned) | Cancels an open request before the colleague answers |
+| POST | `/incidents/:id/handoff` | Technician (assigned) | `{team \| technicianId, workDone}` for work that needs two teams: after acknowledging, the technician records what they did (10–2000 characters) and passes the rest on. With `team`, the available team member with the fewest active incidents is chosen (409 if none). Status returns to ASSIGNED; deadlines do not change |
 | POST | `/incidents/:id/info-request` | Technician (assigned) | `{question}` while ACKNOWLEDGED or IN_PROGRESS; one open question at a time; blocks RESOLVE until answered |
 | POST | `/incidents/:id/info-response` | Employee (reporter) | `{answer}`; clears the open question |
 | GET | `/services`, `/categories` | all | Service catalogue (with criticality) and categories |
@@ -49,7 +55,9 @@ Send `Authorization: Bearer <token>` on every other call.
 
 ## Customer view
 
-For customers the service removes triage data from every response: `priority`, `priorityReason` and SLA deadlines are `null`, `sla` is `NONE`, impact, urgency and criticality are `0`, duplicates are not returned, priority/SLA filters are ignored, and the history only contains customer-facing entries (created, assigned, status changes, resolution, questions, answers, messages, feedback). Notifications to reporters never mention a priority.
+Technicians who worked on an incident earlier (`contributors`) can still open it read-only, and the colleague asked to take an incident over can open it until they answer. The incident detail carries `handover` (the open request) and `contributors` (who passed it on, how and with what note) for staff.
+
+For customers the service removes triage data from every response: `priority`, `priorityReason` and SLA deadlines are `null`, `sla` is `NONE`, impact, urgency and criticality are `0`, duplicates are not returned, priority/SLA filters are ignored, and the history only contains customer-facing entries (created, assigned, status changes, resolution, questions, answers, messages, feedback, and a neutral "Another specialist from our IT team is now handling your request" when a technician hands over or off; hand-over reasons and notes are never shown). Notifications to reporters never mention a priority.
 
 ## Administration (IT manager only)
 

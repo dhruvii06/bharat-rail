@@ -10,7 +10,8 @@ import java.util.Set;
  * event or a channel does not touch the senders.
  */
 public final class NotificationPolicy {
-    public enum Audience { REPORTER, ASSIGNEE, MANAGERS }
+    /** HANDOVER_TARGET: the colleague an open hand-over waits for. PREVIOUS_ASSIGNEE: who last passed the incident on. */
+    public enum Audience { REPORTER, ASSIGNEE, MANAGERS, HANDOVER_TARGET, PREVIOUS_ASSIGNEE }
 
     public enum Channel { IN_APP, EMAIL }
 
@@ -35,9 +36,22 @@ public final class NotificationPolicy {
             Map.entry("SLA_VIOLATED", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), Set.of(Audience.MANAGERS))),
             Map.entry("ESCALATED", new Rule(Set.of(Audience.MANAGERS), Set.of(Audience.MANAGERS))),
             Map.entry("INFO_REQUESTED", new Rule(Set.of(Audience.REPORTER), Set.of(Audience.REPORTER))),
-            Map.entry("INFO_PROVIDED", new Rule(Set.of(Audience.ASSIGNEE), NONE)));
+            Map.entry("INFO_PROVIDED", new Rule(Set.of(Audience.ASSIGNEE), NONE)),
+            // Technicians sharing work. Reporters only hear SPECIALIST_CHANGED, which names no one.
+            Map.entry("HANDOVER_REQUESTED", new Rule(Set.of(Audience.HANDOVER_TARGET, Audience.MANAGERS), Set.of(Audience.HANDOVER_TARGET))),
+            Map.entry("HANDOVER_WITHDRAWN", new Rule(Set.of(Audience.HANDOVER_TARGET), NONE)),
+            Map.entry("HANDOVER_DECLINED", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), NONE)),
+            Map.entry("HANDOVER_ACCEPTED", new Rule(Set.of(Audience.PREVIOUS_ASSIGNEE, Audience.MANAGERS), NONE)),
+            Map.entry("HANDED_OFF", new Rule(Set.of(Audience.ASSIGNEE, Audience.MANAGERS), Set.of(Audience.ASSIGNEE))),
+            Map.entry("HANDED_BACK", new Rule(Set.of(Audience.MANAGERS), Set.of(Audience.MANAGERS))),
+            Map.entry("SPECIALIST_CHANGED", new Rule(Set.of(Audience.REPORTER), NONE)));
 
     public Set<Long> recipients(String eventType, Channel channel, Long reporterId, Long assigneeId, List<Long> managerIds) {
+        return recipients(eventType, channel, reporterId, assigneeId, managerIds, null, null);
+    }
+
+    public Set<Long> recipients(String eventType, Channel channel, Long reporterId, Long assigneeId, List<Long> managerIds,
+                                Long handoverTargetId, Long previousAssigneeId) {
         Rule rule = RULES.get(eventType);
         if (rule == null) return Set.of();
         Set<Long> ids = new LinkedHashSet<>();
@@ -46,6 +60,8 @@ public final class NotificationPolicy {
                 case REPORTER -> { if (reporterId != null) ids.add(reporterId); }
                 case ASSIGNEE -> { if (assigneeId != null) ids.add(assigneeId); }
                 case MANAGERS -> ids.addAll(managerIds);
+                case HANDOVER_TARGET -> { if (handoverTargetId != null) ids.add(handoverTargetId); }
+                case PREVIOUS_ASSIGNEE -> { if (previousAssigneeId != null) ids.add(previousAssigneeId); }
             }
         }
         return ids;

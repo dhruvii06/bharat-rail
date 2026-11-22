@@ -7,7 +7,8 @@ export const reporterRoles: Role[] = ['Employee', 'Customer'];
 export type Priority = 'P1' | 'P2' | 'P3' | 'P4';
 export type Status = 'NEW' | 'CLASSIFIED' | 'ASSIGNED' | 'ACKNOWLEDGED' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED' | 'CLOSED';
 export type SlaState = 'WITHIN' | 'AT_RISK' | 'BREACHED' | 'MET' | 'NONE';
-export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE' | 'CHANGE_PRIORITY' | 'EDIT';
+export type Action = 'ASSIGN' | 'ACKNOWLEDGE' | 'START' | 'REQUEST_INFO' | 'PROVIDE_INFO' | 'RESOLVE' | 'VERIFY' | 'CLOSE' | 'FEEDBACK' | 'NOTE' | 'MESSAGE' | 'CHANGE_PRIORITY' | 'EDIT'
+  | 'HANDOVER' | 'HANDOFF' | 'WITHDRAW_HANDOVER' | 'ACCEPT_HANDOVER' | 'DECLINE_HANDOVER';
 export type Criticality = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 export const criticalities: Criticality[] = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
@@ -53,7 +54,18 @@ export interface Incident {
   informationRequest: string | null; informationRequestedAt: string | null;   // open question to the reporter
   // Present on the detail endpoint only:
   resolution: Resolution | null; history: HistoryEntry[] | null; allowedActions: Action[] | null; similar: SimilarIncident[] | null;
+  // Staff only (null / empty for customers):
+  handover: Handover | null; contributors: Contributor[];
 }
+
+/** An open request from the assigned technician to a colleague to take the incident over. */
+export interface Handover { fromId: number | null; fromName: string | null; toId: number; toName: string; reason: string; requestedAt: string }
+
+/** A technician who worked on the incident before the current assignee. */
+export interface Contributor { id: number; name: string; passedOn: 'HANDED_OVER' | 'HANDED_OFF' | 'HANDED_BACK'; note: string | null; at: string }
+
+/** A colleague the assigned technician can hand an incident to; team is a technician team code. */
+export interface Colleague { id: number; name: string; team: string; workload: number; capacity: number; available: boolean }
 
 export interface CreatedIncident { incident: Incident; possibleDuplicates: SimilarIncident[] }
 

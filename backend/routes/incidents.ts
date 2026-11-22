@@ -27,6 +27,13 @@ export function incidentRoutes(service: IncidentServiceClient): Router {
   route('get', '/incidents/:id/similar', ['Technician', 'Manager']);
   route('post', '/incidents/:id/info-request', ['Technician']);  // {question}: assigned technician asks the reporter
   route('post', '/incidents/:id/info-response', REPORTERS);   // {answer}: the reporter replies
+  // Technicians sharing work (the Java domain checks who may do what):
+  route('get', '/incidents/:id/colleagues', ['Technician']);          // who the assignee can hand over to
+  route('post', '/incidents/:id/handover', ['Technician']);           // {technicianId?, reason}: ask a colleague, or hand back to the manager when no technicianId
+  route('post', '/incidents/:id/handover/accept', ['Technician']);    // the colleague who was asked
+  route('post', '/incidents/:id/handover/decline', ['Technician']);   // {reason?}
+  route('post', '/incidents/:id/handover/withdraw', ['Technician']);  // the requester, before an answer
+  route('post', '/incidents/:id/handoff', ['Technician']);            // {team | technicianId, workDone}: pass part-done work to another team
 
   route('get', '/services', ALL);
   route('get', '/categories', ALL);
